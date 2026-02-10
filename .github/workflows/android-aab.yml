@@ -29,7 +29,8 @@ jobs:
 
       - name: Decode keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > untapgo-release.keystore
+	  printf '%s' "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/untapgo-release.keystore
+
 
       - name: Create key.properties
         run: |
