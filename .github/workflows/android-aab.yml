@@ -29,15 +29,14 @@ jobs:
 
       - name: Decode keystore
         run: |
-	  printf '%s' "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/untapgo-release.keystore
-
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/untapgo-release.keystore
 
       - name: Create key.properties
         run: |
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=untapgo" >> android/key.properties
-          echo "storeFile=../untapgo-release.keystore" >> android/key.properties
+          echo "storeFile=untapgo-release.keystore" >> android/key.properties
 
       - name: Build AAB
         run: flutter build appbundle --release
