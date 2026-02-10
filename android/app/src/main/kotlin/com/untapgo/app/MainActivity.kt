@@ -1,4 +1,4 @@
-package com.example.tap_in
+package com.untapgo.app
 
 import io.flutter.embedding.android.FlutterActivity
 
