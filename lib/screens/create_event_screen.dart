@@ -12,9 +12,7 @@ const String kGoogleMapsApiKey = 'AIzaSyDOEmRGIwDF3WEvbouSeIBL7JloiW78GzA';
 
 const List<String> kPowerLevels = [
   'Casual',
-  'Optimized',
   'Competitive',
-  'cEDH',
 ];
 
 const List<String> kProxiesPolicies = [

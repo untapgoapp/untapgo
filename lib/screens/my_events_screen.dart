@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
 import '../models/event.dart';
 import '../services/event_service.dart';
@@ -19,10 +20,14 @@ class _MyEventsScreenState extends State<MyEventsScreen>
   late Future<List<Event>> _future;
   late final TabController _tab;
 
+  String _formatDate(DateTime dt) {
+    return DateFormat('MMM d · HH:mm').format(dt.toLocal());
+  }
+
   @override
   void initState() {
     super.initState();
-    _future = _service.fetchMyEvents(); // GET /events/mine
+    _future = _service.fetchMyEvents();
     _tab = TabController(length: 2, vsync: this);
   }
 
@@ -37,10 +42,6 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     await _future;
   }
 
-  // ---------------------------
-  // Status logic (FINAL)
-  // ---------------------------
-
   String _normStatus(String? s) => (s ?? '').trim().toLowerCase();
 
   bool _isUpcoming(Event e) {
@@ -53,10 +54,6 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     return s == 'ended';
   }
 
-  // ---------------------------
-  // Navigation
-  // ---------------------------
-
   Future<void> _openEvent(Event e) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EventDetailScreen(event: e)),
@@ -67,28 +64,14 @@ class _MyEventsScreenState extends State<MyEventsScreen>
     }
   }
 
-  Future<void> _openAttendees(String eventId) async {
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => AttendeesScreen(eventId: eventId)),
-    );
-
-    if (mounted) {
-      await _reload();
-    }
-  }
-
   String _prettyError(Object err) {
     final s = err.toString();
     if (s.contains('PGRST203')) {
-      return "Backend function overload (PGRST203). Your /events/mine route must call the right RPC explicitly.";
+      return "Backend function overload (PGRST203).";
     }
     if (s.length > 180) return s.substring(0, 180);
     return s;
   }
-
-  // ---------------------------
-  // UI
-  // ---------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +125,6 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                 final upcoming = mine.where(_isUpcoming).toList();
                 final history = mine.where(_isHistory).toList();
 
-                // Order: Upcoming soonest first, History newest first
                 upcoming.sort((a, b) => a.startsAt.compareTo(b.startsAt));
                 history.sort((a, b) => b.startsAt.compareTo(a.startsAt));
 
@@ -165,28 +147,94 @@ class _MyEventsScreenState extends State<MyEventsScreen>
 
                   return RefreshIndicator(
                     onRefresh: _reload,
-                    child: ListView.separated(
+                    child: ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         final e = items[i];
 
-                        return ListTile(
-                          title: Text(e.title),
-                          subtitle: Text(e.status),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('${e.playerCount}/${e.maxPlayers}'),
-                              IconButton(
-                                icon: const Icon(Icons.group_outlined),
-                                tooltip: 'Attendees',
-                                onPressed: () => _openAttendees(e.id),
+                        final format = (e.formatSlug ?? '').isNotEmpty
+                            ? e.formatSlug![0].toUpperCase() +
+                                e.formatSlug!.substring(1)
+                            : 'Unknown';
+
+                        final dateStr = _formatDate(e.startsAt);
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: () => _openEvent(e),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          e.title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '$format · $dateStr',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.group_outlined,
+                                          size: 16,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${e.playerCount}/${e.maxPlayers}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                          onTap: () => _openEvent(e),
                         );
                       },
                     ),

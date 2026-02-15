@@ -283,6 +283,27 @@ class EventService {
     return _decodeEvents(res.body, uri);
   }
 
+  Future<Event> getEvent(String eventId) async {
+  final uri = Uri.parse('$backendBaseUrl/events/$eventId');
+
+  await _waitForSession(maxMs: 5000);
+
+  final res = await http.get(uri, headers: _headers()).timeout(_timeout);
+
+  if (res.statusCode != 200) {
+    _throwHttp('GET', uri, res);
+  }
+
+  final decoded = jsonDecode(res.body);
+
+  if (decoded is Map<String, dynamic>) {
+    return Event.fromJson(decoded);
+  }
+
+  throw Exception('GET $uri returned unexpected shape: ${res.body}');
+}
+
+
   /// ✅ Nearby feed (server-side distance + filtering).
   Future<List<Event>> fetchNearbyEvents({
     required double lat,

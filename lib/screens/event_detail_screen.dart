@@ -188,8 +188,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   bool get _canJoin => _isOpen && !_isJoined && !_isRequested;
 
-  bool get _canLeave => _isJoined && (_isOpen || _isFull);
-
+  bool get _canLeave => _isJoined && !_isEnded && !_isCancelled;
   bool get _canCancelRequest => _isRequested && (_isOpen || _isFull);
 
   bool get _canCancelEvent => _isHost && (_isOpen || _isFull);
@@ -907,11 +906,27 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             IconButton(
               icon: const Icon(Icons.share),
               onPressed: () {
-                Share.share(
-                  'UntapGo event: ${_event.title}\n'
-                  'Host: ${_event.hostNickname}\n'
-                  '${_event.addressText ?? ''}',
-                );
+                const playStoreUrl =
+                  'https://play.google.com/store/apps/details?id=com.untapgo.app';
+
+                final address = (_event.addressText ?? '').trim();
+
+                final text = StringBuffer()
+                  ..writeln('Join my game on UntapGo!')
+                  ..writeln()
+                  ..writeln(_event.title)
+                  ..writeln('Host: ${_event.hostNickname}');
+
+                if (address.isNotEmpty) {
+                  text.writeln(address);
+                }
+
+                text
+                  ..writeln()
+                  ..writeln('Get the app:')
+                  ..writeln(playStoreUrl);
+
+                Share.share(text.toString().trim());
               },
             ),
           ],

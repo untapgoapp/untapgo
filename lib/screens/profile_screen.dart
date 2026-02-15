@@ -1,10 +1,10 @@
 // lib/screens/profile_screen.dart
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/event_service.dart';
 import '../services/profile_service.dart';
@@ -17,8 +17,6 @@ class PublicProfile {
   final String? avatarUrl;
   final String? bio;
   final String? mtgArenaUsername;
-
-  // ✅ NEW: stats
   final int hostedCount;
   final int playedCount;
 
@@ -63,10 +61,7 @@ class _PublicDeck {
   final String commanderName;
   final String? deckUrl;
   final String? formatSlug;
-
-  // ✅ plain text export
   final String? exportText;
-
   final bool w, u, b, r, g, c;
 
   _PublicDeck({
@@ -95,7 +90,7 @@ class _PublicDeck {
       commanderName: (json['commander_name'] ?? '').toString(),
       deckUrl: ss(json['deck_url']),
       formatSlug: ss(json['format_slug']),
-      exportText: ss(json['export_text'] ?? json['deck_text']), // tolerate old key
+      exportText: ss(json['export_text'] ?? json['deck_text']),
       w: bb(json['color_white']),
       u: bb(json['color_blue']),
       b: bb(json['color_black']),
@@ -142,10 +137,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _decksFuture = _fetchDecks();
   }
 
-  // ---------------------------
-  // Networking
-  // ---------------------------
-
   Future<PublicProfile> _fetchProfile() async {
     final res = await http.get(
       Uri.parse('${EventService.backendBaseUrl}/profiles/${widget.userId}'),
@@ -173,13 +164,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final decoded = jsonDecode(res.body);
     if (decoded is Map && decoded['decks'] is List) {
       final list = decoded['decks'] as List;
-
       final decks = list
           .whereType<Map<String, dynamic>>()
           .map((e) => _PublicDeck.fromJson(e))
           .toList();
 
-      // ✅ cap in UI (and feels nicer)
       if (decks.length > 10) return decks.take(10).toList();
       return decks;
     }
@@ -194,10 +183,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
     await _future;
   }
-
-  // ---------------------------
-  // Actions
-  // ---------------------------
 
   void _openAvatarPreview(ImageProvider image) {
     showDialog<void>(
@@ -291,10 +276,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ---------------------------
-  // UI helpers
-  // ---------------------------
-
   Widget _squircleAvatar({
     required ImageProvider? avatar,
     required VoidCallback? onTap,
@@ -339,7 +320,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _statsRow(PublicProfile p) {
     Widget stat(String label, int value) {
-      return Expanded(
+      return Flexible(
+        key: ValueKey('$label-$value'),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -392,41 +374,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (d.r) letters.add('R');
     if (d.g) letters.add('G');
     final showC = d.c || letters.isEmpty;
+    if (showC) letters.add('C');
 
     return Wrap(
       spacing: 6,
-      runSpacing: -10,
-      children: [
-        ...letters.map(
-          (c) => Chip(
-            label: Text(
-              c,
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 12,
-                height: 1.0,
-              ),
+      runSpacing: -8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: letters
+          .map(
+            (c) => SvgPicture.asset(
+              'assets/mana/${c.toLowerCase()}.svg',
+              width: 18,
+              height: 18,
             ),
-            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
-        if (showC)
-          const Chip(
-            label: Text(
-              'C',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 12,
-                height: 1.0,
-              ),
-            ),
-            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-      ],
+          )
+          .toList(),
     );
   }
 
@@ -434,70 +396,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final name = d.commanderName.trim().isEmpty ? 'Unnamed deck' : d.commanderName.trim();
     final fmt = _formatLabel(d.formatSlug);
     final hasLink = (d.deckUrl ?? '').trim().isNotEmpty;
-
     final export = (d.exportText ?? '').trim();
     final hasExport = export.isNotEmpty;
 
-    return ExpansionTile(
-      initiallyExpanded: false,
+    return Theme(
+    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+    child: ExpansionTile(
       tilePadding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+      maintainState: true,
+      
+      // ✅ NOMBRE + FORMATO en UNA SOLA LÍNEA
       title: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // NOMBRE (protagonista)
           Expanded(
             child: Text(
               name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              maxLines: 1,overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+                color: Colors.black87,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Chip(
-            label: Text(
-              fmt,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
-                height: 1.0,
+          // FORMATO al lado (secundario)
+          if (fmt.isNotEmpty) ...[
+            const SizedBox(width: 6),  // ← ESPACIO entre ellos
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                fmt,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ),
-            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
+          ],
         ],
       ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Row(
-          children: [
-            Expanded(child: _deckColors(d)),
-            if (hasLink) ...[
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: () => _openDeckUrl(d.deckUrl!),
-                icon: const Icon(Icons.link, size: 14),
-                label: const Text(
-                  'Open',
-                  style: TextStyle(fontSize: 12),
-                ),
-                style: OutlinedButton.styleFrom(
-                  visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-      trailing: hasExport ? const Icon(Icons.expand_more, size: 20) : const SizedBox(width: 20),
+      subtitle: _deckColors(d),
+      trailing: hasExport ? const Icon(Icons.expand_more, size: 20) : null,
       children: [
+        if (hasLink)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
+            child: OutlinedButton.icon(
+              onPressed: () => _openDeckUrl(d.deckUrl!),
+              icon: const Icon(Icons.link, size: 14),
+              label: const Text('Open', style: TextStyle(fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+        
         if (hasExport) ...[
           const SizedBox(height: 6),
           Container(
@@ -521,16 +484,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               _isMe ? 'No export text yet.' : 'No export text.',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
           ),
         ],
       ],
-    );
-  }
+    ),
+  );
+}
 
   Widget _decksSection() {
     return FutureBuilder<List<_PublicDeck>>(
@@ -545,7 +506,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         final decks = snap.data ?? const <_PublicDeck>[];
 
-        // ✅ less bulky: no Card wrapper, just a subtle container
         return Container(
           decoration: BoxDecoration(
             border: Border.all(color: Colors.black12),
@@ -596,10 +556,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ---------------------------
-  // Build
-  // ---------------------------
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -626,7 +582,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             final p = snap.data!;
             final bio = (p.bio ?? '').trim();
             final arena = (p.mtgArenaUsername ?? '').trim();
-
             final hasAvatar = (p.avatarUrl ?? '').trim().isNotEmpty;
             final ImageProvider? avatar = hasAvatar ? NetworkImage(p.avatarUrl!) : null;
 
@@ -634,7 +589,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               children: [
-                // Header "lighter": soft container, less padding, smaller avatar
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -657,6 +611,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           children: [
                             Text(
                               p.nickname.isNotEmpty ? p.nickname : 'Player',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: Theme.of(context)
                                   .textTheme
                                   .titleLarge
@@ -675,12 +631,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             if (bio.isNotEmpty)
                               Text(
                                 bio,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: Colors.grey.shade800,
                                   height: 1.25,
                                 ),
                               ),
-                            // ✅ hosted/played
                             _statsRow(p),
                           ],
                         ),
@@ -700,7 +657,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 12),
                 ],
 
-                // ✅ Decks collapsible section + per-deck export collapsible
                 _decksSection(),
               ],
             );

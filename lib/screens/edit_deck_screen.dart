@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../services/event_service.dart';
 
@@ -50,9 +51,7 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
   bool _w = false, _u = false, _b = false, _r = false, _g = false, _c = false;
 
   String _formatSlug = '';
-
   bool _saving = false;
-  String? _error;
 
   static const List<Map<String, String>> _formatOptions = [
     {'slug': '', 'label': 'None'},
@@ -104,34 +103,35 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
 
   Future<void> _save() async {
     final commanderName = _commander.text.trim();
+
     if (commanderName.isEmpty) {
-      setState(() => _error = 'Commander name is required');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Name is required'),
+          backgroundColor: Colors.grey.shade900,
+        ),
+      );
       return;
     }
 
     final bool colorlessFinal = _c || !_hasAnyColor;
 
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
+    setState(() => _saving = true);
 
     final format = _formatSlug.trim();
+
     final body = {
       'commander_name': commanderName,
       'deck_url': _deckUrl.text.trim().isEmpty ? null : _deckUrl.text.trim(),
-
       'color_white': _w,
       'color_blue': _u,
       'color_black': _b,
       'color_red': _r,
       'color_green': _g,
       'color_colorless': colorlessFinal,
-
       'format_slug': format.isEmpty ? null : format,
-      'export_text': _exportText.text.trim().isEmpty
-          ? null
-          : _exportText.text.trim(),
+      'export_text':
+          _exportText.text.trim().isEmpty ? null : _exportText.text.trim(),
     };
 
     try {
@@ -152,18 +152,49 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+
+      final raw = e.toString();
+      String message = 'Something went wrong';
+
+      if (raw.contains('23514')) {
+        message = 'Invalid deck configuration. Check format and colors.';
+      } else if (raw.contains('duplicate')) {
+        message = 'A deck with this name already exists.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.grey.shade900,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
   Widget _colorToggle(String label, bool value, ValueChanged<bool> onChanged) {
-    return FilterChip(
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      selected: value,
-      onSelected: _saving ? null : onChanged,
-      visualDensity: VisualDensity.compact,
+    return GestureDetector(
+      onTap: _saving ? null : () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: value ? Colors.black.withOpacity(0.05) : Colors.transparent,
+          border: Border.all(
+            color: value ? Colors.black : Colors.grey.shade400,
+            width: value ? 2 : 1,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: SvgPicture.asset(
+          'assets/mana/${label.toLowerCase()}.svg',
+          width: 24,
+          height: 24,
+        ),
+      ),
     );
   }
 
@@ -187,7 +218,7 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
           TextField(
             controller: _commander,
             decoration: const InputDecoration(
-              labelText: 'Commander',
+              labelText: 'Name',
               border: OutlineInputBorder(),
             ),
           ),
@@ -203,7 +234,8 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
                   ),
                 )
                 .toList(),
-            onChanged: _saving ? null : (v) => setState(() => _formatSlug = v ?? ''),
+            onChanged:
+                _saving ? null : (v) => setState(() => _formatSlug = v ?? ''),
             decoration: const InputDecoration(
               labelText: 'Format',
               border: OutlineInputBorder(),
@@ -220,19 +252,21 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
             ),
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
           Text(
             'Colors',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 8),
+
+          const SizedBox(height: 10),
 
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 12,
+            runSpacing: 12,
             children: [
               _colorToggle('W', _w, (v) => setState(() => _w = v)),
               _colorToggle('U', _u, (v) => setState(() => _u = v)),
@@ -243,24 +277,19 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 20),
 
           TextField(
             controller: _exportText,
             minLines: 8,
             maxLines: 20,
             decoration: const InputDecoration(
-              labelText: 'ManaBox text (paste here)',
+              labelText: 'Plain text (paste here)',
               border: OutlineInputBorder(),
             ),
           ),
 
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: Colors.red)),
-          ],
-
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
           FilledButton.icon(
             onPressed: _saving ? null : _save,

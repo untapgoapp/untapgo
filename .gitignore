@@ -46,3 +46,7 @@ app.*.map.json
 # Android signing
 android/key.properties
 *.keystore
+android/build/
+android/build/
+build/
+.dart_tool/

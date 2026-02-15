@@ -6,6 +6,8 @@ import 'events_list_screen.dart';
 import 'my_events_screen.dart';
 import 'settings_screen.dart';
 import 'profile_screen.dart';
+import '../services/event_service.dart';
+import 'event_detail_screen.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key});
@@ -182,17 +184,32 @@ class _RootScreenState extends State<RootScreen> {
                   ),
                 ..._notifications.map(
                   (n) => PopupMenuItem<Object?>(
-                    enabled: false,
+                    value: n,
                     child: ListTile(
                       title: Text(
-                        n['payload']?['title'] ?? 'New notification',
+                        n['title'] ?? 'New notification',
                       ),
-                      subtitle: n['payload']?['body'] != null
-                          ? Text(n['payload']['body'])
-                          : null,
+                      subtitle: n['body'] != null
+                        ? Text(n['body'])
+                        : null,
+
                       onTap: () async {
                         Navigator.pop(context);
+
+                        final eventId = n['event_id'];
+                        if (eventId == null) return;
+
                         await _markOneRead(n['id']);
+
+                        final event = await EventService().getEvent(eventId);
+
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EventDetailScreen(event: event),
+                          ),
+                        );
                       },
                     ),
                   ),

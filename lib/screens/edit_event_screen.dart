@@ -79,9 +79,7 @@ class _EditEventScreenState extends State<EditEventScreen> {
   // ─────────────────────────────────────────────────────────────
   static const List<String> _powerLevels = [
     'Casual',
-    'Optimized',
     'Competitive',
-    'cEDH',
   ];
 
   String? _powerLevel;

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'edit_deck_screen.dart';
 
@@ -32,6 +33,8 @@ class _MyDecksBodyState extends State<MyDecksBody> {
   String _formatFilter = '';
   late Future<List<_Deck>> _future;
 
+  List<_Deck> _decks = [];
+
   static const List<Map<String, String>> _formatOptions = [
     {'slug': '', 'label': 'All'},
     {'slug': 'commander', 'label': 'Commander'},
@@ -54,10 +57,17 @@ class _MyDecksBodyState extends State<MyDecksBody> {
   }
 
   Future<void> _reload() async {
+    final newFuture = _fetchMyDecks();
     setState(() {
-      _future = _fetchMyDecks();
+      _future = newFuture;
     });
-    await _future;
+
+    final data = await newFuture;
+    if (mounted) {
+      setState(() {
+        _decks = data;
+      });
+    }
   }
 
   Uri _decksUri() {
@@ -81,6 +91,7 @@ class _MyDecksBodyState extends State<MyDecksBody> {
     await _waitForSession();
 
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
+
     final res = await http.get(
       _decksUri(),
       headers: {
@@ -122,6 +133,9 @@ class _MyDecksBodyState extends State<MyDecksBody> {
           initialB: d.b,
           initialR: d.r,
           initialG: d.g,
+          initialC: d.c,
+          initialFormatSlug: d.formatSlug,
+          initialExportText: d.exportText,
         ),
       ),
     );
@@ -133,7 +147,9 @@ class _MyDecksBodyState extends State<MyDecksBody> {
 
   Future<void> _deleteDeck(_Deck d) async {
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token == null) return;
+    if (token == null) {
+      throw Exception('No auth token');
+    }
 
     final res = await http.delete(
       Uri.parse('$_backendBaseUrl/me/decks/${d.id}'),
@@ -153,9 +169,7 @@ class _MyDecksBodyState extends State<MyDecksBody> {
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Delete deck'),
-            content: Text(
-              'Delete "${d.commanderName.isNotEmpty ? d.commanderName : 'this deck'}"?',
-            ),
+            content: Text('Delete "${d.displayName}"?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -186,41 +200,6 @@ class _MyDecksBodyState extends State<MyDecksBody> {
     return s;
   }
 
-  Widget _swipeEditBackground() {
-    return Container(
-      color: Colors.blue.shade600,
-      alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: const Row(
-        children: [
-          Icon(Icons.edit, color: Colors.white),
-          SizedBox(width: 8),
-          Text('Edit',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-
-  Widget _swipeDeleteBackground() {
-    return Container(
-      color: Colors.red.shade600,
-      alignment: Alignment.centerRight,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Text('Delete',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-          SizedBox(width: 8),
-          Icon(Icons.delete, color: Colors.white),
-        ],
-      ),
-    );
-  }
-
   Widget _colorChips(_Deck d) {
     final letters = <String>[
       if (d.w) 'W',
@@ -234,19 +213,13 @@ class _MyDecksBodyState extends State<MyDecksBody> {
     return Wrap(
       spacing: 6,
       runSpacing: -8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: letters
           .map(
-            (c) => Chip(
-              label: Text(
-                c,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, fontSize: 12, height: 1),
-              ),
-              visualDensity:
-                  const VisualDensity(horizontal: -4, vertical: -4),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            (c) => SvgPicture.asset(
+              'assets/mana/${c.toLowerCase()}.svg',
+              width: 18,
+              height: 18,
             ),
           )
           .toList(),
@@ -313,78 +286,93 @@ class _MyDecksBodyState extends State<MyDecksBody> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final decks = snapshot.data!;
+        if (_decks.isEmpty) {
+          _decks = snapshot.data!;
+        }
 
         return RefreshIndicator(
           onRefresh: _reload,
           child: ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: decks.length + 1,
+            itemCount: _decks.length + 1,
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, i) {
               if (i == 0) return _header();
 
-              final d = decks[i - 1];
+              final d = _decks[i - 1];
               final hasLink = (d.deckUrl ?? '').isNotEmpty;
               final fmt = _formatLabel(d.formatSlug);
 
               return Dismissible(
                 key: ValueKey(d.id),
-                background: _swipeEditBackground(),
-                secondaryBackground: _swipeDeleteBackground(),
+                background: Container(color: Colors.blue.shade600),
+                secondaryBackground: Container(color: Colors.red.shade600),
                 confirmDismiss: (direction) async {
                   if (direction == DismissDirection.startToEnd) {
                     _openEditDeck(d);
                     return false;
                   }
+
                   if (direction == DismissDirection.endToStart) {
-                    return await _confirmDelete(d);
+                    final confirmed = await _confirmDelete(d);
+                    if (!confirmed) return false;
+
+                    try {
+                      await _deleteDeck(d);
+
+                      setState(() {
+                        _decks.removeWhere((deck) => deck.id == d.id);
+                      });
+
+                      return true;
+                    } catch (_) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Failed to delete deck')),
+                        );
+                      }
+                      return false;
+                    }
                   }
+
                   return false;
-                },
-                onDismissed: (_) async {
-                  await _deleteDeck(d);
-                  await _reload();
                 },
                 child: ListTile(
                   dense: true,
-                  title: Text(
-                    d.commanderName.isNotEmpty
-                        ? d.commanderName
-                        : 'Unnamed deck',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  title: RichText(
+                    text: TextSpan(
+                      style: DefaultTextStyle.of(context).style,
+                      children: [
+                        TextSpan(
+                          text: d.displayName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: Colors.black,
+                          ),
+                        ),
+                        if (fmt.isNotEmpty) ...[
+                          const TextSpan(text: '  –  '),
+                          TextSpan(
+                            text: fmt,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: -8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Chip(
-                          label: Text(
-                            fmt,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
-                                height: 1),
-                          ),
-                          visualDensity: const VisualDensity(
-                              horizontal: -4, vertical: -4),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        _colorChips(d),
-                      ],
-                    ),
+                    child: _colorChips(d),
                   ),
                   trailing: hasLink
                       ? IconButton(
                           icon: const Icon(Icons.link, size: 18),
-                          visualDensity: const VisualDensity(
-                              horizontal: -4, vertical: -4),
                           onPressed: () => _openDeckUrl(d.deckUrl!),
                         )
                       : null,
@@ -420,6 +408,9 @@ class _Deck {
     required this.g,
     required this.c,
   });
+
+  String get displayName =>
+      commanderName.isNotEmpty ? commanderName : 'Unnamed Deck';
 
   factory _Deck.fromJson(Map<String, dynamic> json) {
     bool bb(dynamic v) => v == true || v == 1 || v == '1';

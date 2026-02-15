@@ -9,19 +9,20 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_svg: ^2.0.10
   cupertino_icons: ^1.0.5
   http: ^1.2.0
   google_places_flutter: ^2.0.6
   supabase_flutter: ^2.5.6
   url_launcher: ^6.3.0
-  share_plus: ^10.0.2
+  share_plus: ^7.2.1
   image_picker: ^1.0.7
-  geolocator: ^10.1.0
+  geolocator: ^14.0.2
   shared_preferences: ^2.2.3
-  change_app_package_name: ^1.5.0
+  intl: ^0.20.2
 
 dev_dependencies:
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.1
 
 flutter:
@@ -30,6 +31,7 @@ flutter:
     - assets/branding/ugo_inverted_small.png
     - assets/branding/ugo.png
     - assets/branding/ugo_splash.png
+    - assets/mana/
 
 flutter_launcher_icons:
   android: true

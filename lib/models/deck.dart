@@ -92,6 +92,10 @@ class Deck {
     return parts.join();
   }
 
+String get displayName =>
+    commanderName.isNotEmpty ? commanderName : 'Unnamed deck';
+
+
   Deck copyWith({
     String? commanderName,
     String? deckUrl,
