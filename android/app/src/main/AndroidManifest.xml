@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:label="tap_in"
+        android:label="UntapGo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

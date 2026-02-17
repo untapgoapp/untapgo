@@ -9,7 +9,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/event_service.dart';
 import '../services/profile_service.dart';
 import 'edit_profile_screen.dart';
-import 'my_decks_screen.dart';
+import 'edit_deck_screen.dart';
 
 class PublicProfile {
   final String id;
@@ -50,8 +50,8 @@ class PublicProfile {
       avatarUrl: ss(json['avatar_url']),
       bio: ss(json['bio']),
       mtgArenaUsername: ss(json['mtg_arena_username']),
-      hostedCount: ii(json['hosted_count'] ?? json['hosted'] ?? json['hostedCount']),
-      playedCount: ii(json['played_count'] ?? json['played'] ?? json['playedCount']),
+      hostedCount: ii(json['hosted_count']),
+      playedCount: ii(json['played_count']),
     );
   }
 }
@@ -62,6 +62,7 @@ class _PublicDeck {
   final String? deckUrl;
   final String? formatSlug;
   final String? exportText;
+  final String? imageUrl;
   final bool w, u, b, r, g, c;
 
   _PublicDeck({
@@ -70,6 +71,7 @@ class _PublicDeck {
     required this.deckUrl,
     required this.formatSlug,
     required this.exportText,
+    required this.imageUrl,
     required this.w,
     required this.u,
     required this.b,
@@ -90,7 +92,8 @@ class _PublicDeck {
       commanderName: (json['commander_name'] ?? '').toString(),
       deckUrl: ss(json['deck_url']),
       formatSlug: ss(json['format_slug']),
-      exportText: ss(json['export_text'] ?? json['deck_text']),
+      exportText: ss(json['export_text']),
+      imageUrl: ss(json['image_url']),
       w: bb(json['color_white']),
       u: bb(json['color_blue']),
       b: bb(json['color_black']),
@@ -104,10 +107,7 @@ class _PublicDeck {
 class ProfileScreen extends StatefulWidget {
   final String userId;
 
-  const ProfileScreen({
-    super.key,
-    required this.userId,
-  });
+  const ProfileScreen({super.key, required this.userId});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -117,17 +117,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<PublicProfile>? _future;
   Future<List<_PublicDeck>>? _decksFuture;
 
+  final Map<String, String?> _imageCache = {};
+  static const String _cardBack =
+      'https://cards.scryfall.io/card-back.jpg';
+
   bool get _isMe {
     final me = Supabase.instance.client.auth.currentUser?.id;
     return me != null && me == widget.userId;
-  }
-
-  Map<String, String> _headers() {
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    return {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
   }
 
   @override
@@ -137,43 +133,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _decksFuture = _fetchDecks();
   }
 
+  Map<String, String> _headers() {
+    final token =
+        Supabase.instance.client.auth.currentSession?.accessToken;
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
+
   Future<PublicProfile> _fetchProfile() async {
     final res = await http.get(
       Uri.parse('${EventService.backendBaseUrl}/profiles/${widget.userId}'),
       headers: _headers(),
     );
 
-    if (res.statusCode != 200) {
-      throw Exception(res.body);
-    }
-
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return PublicProfile.fromJson(data);
+    if (res.statusCode != 200) throw Exception(res.body);
+    return PublicProfile.fromJson(jsonDecode(res.body));
   }
 
   Future<List<_PublicDeck>> _fetchDecks() async {
     final res = await http.get(
-      Uri.parse('${EventService.backendBaseUrl}/profiles/${widget.userId}/decks'),
+      Uri.parse(
+          '${EventService.backendBaseUrl}/profiles/${widget.userId}/decks'),
       headers: _headers(),
     );
 
-    if (res.statusCode != 200) {
-      return const <_PublicDeck>[];
-    }
+    if (res.statusCode != 200) return [];
 
     final decoded = jsonDecode(res.body);
     if (decoded is Map && decoded['decks'] is List) {
-      final list = decoded['decks'] as List;
-      final decks = list
+      return (decoded['decks'] as List)
           .whereType<Map<String, dynamic>>()
           .map((e) => _PublicDeck.fromJson(e))
+          .take(10)
           .toList();
-
-      if (decks.length > 10) return decks.take(10).toList();
-      return decks;
     }
 
-    return const <_PublicDeck>[];
+    return [];
   }
 
   Future<void> _reload() async {
@@ -184,186 +181,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _future;
   }
 
-  void _openAvatarPreview(ImageProvider image) {
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (_) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        backgroundColor: Colors.transparent,
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Container(
-                color: Colors.black,
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: InteractiveViewer(
-                    minScale: 1,
-                    maxScale: 4,
-                    child: Center(
-                      child: Image(image: image, fit: BoxFit.contain),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close, color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _deleteDeck(String id) async {
+    final token =
+        Supabase.instance.client.auth.currentSession?.accessToken;
+
+    await http.delete(
+      Uri.parse('${EventService.backendBaseUrl}/me/decks/$id'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
     );
-  }
-
-  Future<void> _openEdit(PublicProfile p) async {
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token == null) return;
-
-    final service = ProfileService();
-
-    final changed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EditProfileScreen(
-          service: service,
-          initialNickname: p.nickname,
-          initialAvatarUrl: p.avatarUrl,
-          initialBio: p.bio,
-          initialMtgArenaUsername: p.mtgArenaUsername,
-        ),
-      ),
-    );
-
-    if (changed == true) {
-      await _reload();
-    }
-  }
-
-  Future<void> _openMyDecks() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const MyDecksScreen()),
-    );
-    await _reload();
   }
 
   Future<void> _openDeckUrl(String url) async {
-    final u = url.trim();
-    if (u.isEmpty) return;
-
-    final uri = Uri.tryParse(u);
-    if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid URL')),
-      );
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null ||
+        !(uri.isScheme('http') || uri.isScheme('https'))) {
       return;
     }
-
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open link')),
-      );
-    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  Widget _squircleAvatar({
-    required ImageProvider? avatar,
-    required VoidCallback? onTap,
-    double size = 88,
-  }) {
-    final r = BorderRadius.circular(size * 0.28);
 
-    return InkWell(
-      borderRadius: r,
-      onTap: onTap,
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: r,
-            child: Container(
-              width: size,
-              height: size,
-              color: Colors.grey.shade200,
-              child: avatar != null
-                  ? Image(image: avatar, fit: BoxFit.cover)
-                  : const Center(child: Icon(Icons.person, size: 42)),
-            ),
-          ),
-          if (avatar != null)
-            Positioned(
-              bottom: 6,
-              right: 6,
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: const Icon(Icons.zoom_in, size: 17, color: Colors.white),
-              ),
-            ),
-        ],
+  Widget _imageBox(String url) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 90,
+        height: 70,
+        color: Colors.grey.shade200,
+        child: Image.network(url, fit: BoxFit.cover),
       ),
     );
   }
 
-  Widget _statsRow(PublicProfile p) {
-    Widget stat(String label, int value) {
-      return Flexible(
-        key: ValueKey('$label-$value'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label.toUpperCase(),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Colors.grey.shade600,
-                letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value.toString(),
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                height: 1.0,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+  Widget _deckImage(_PublicDeck d, String name) {
+    final imageUrl = (d.imageUrl ?? '').trim();
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        children: [
-          stat('Hosted', p.hostedCount),
-          const SizedBox(width: 18),
-          stat('Played', p.playedCount),
-        ],
-      ),
+    return _imageBox(
+      imageUrl.startsWith('http') ? imageUrl : _cardBack,
     );
-  }
-
-  String _formatLabel(String? slug) {
-    final s = (slug ?? '').trim().toLowerCase();
-    if (s.isEmpty) return 'Other';
-    return s[0].toUpperCase() + s.substring(1);
   }
 
   Widget _deckColors(_PublicDeck d) {
@@ -373,186 +231,278 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (d.b) letters.add('B');
     if (d.r) letters.add('R');
     if (d.g) letters.add('G');
-    final showC = d.c || letters.isEmpty;
-    if (showC) letters.add('C');
+    if (d.c || letters.isEmpty) letters.add('C');
 
     return Wrap(
       spacing: 6,
-      runSpacing: -8,
-      crossAxisAlignment: WrapCrossAlignment.center,
       children: letters
-          .map(
-            (c) => SvgPicture.asset(
-              'assets/mana/${c.toLowerCase()}.svg',
-              width: 18,
-              height: 18,
-            ),
-          )
+          .map((c) => SvgPicture.asset(
+                'assets/mana/${c.toLowerCase()}.svg',
+                width: 18,
+                height: 18,
+              ))
           .toList(),
     );
   }
 
-  Widget _deckCard(_PublicDeck d) {
-    final name = d.commanderName.trim().isEmpty ? 'Unnamed deck' : d.commanderName.trim();
-    final fmt = _formatLabel(d.formatSlug);
-    final hasLink = (d.deckUrl ?? '').trim().isNotEmpty;
-    final export = (d.exportText ?? '').trim();
-    final hasExport = export.isNotEmpty;
+  Widget _deckTile(_PublicDeck d) {
+    final name = d.commanderName.trim().isEmpty
+        ? 'Unnamed deck'
+        : d.commanderName.trim();
 
-    return Theme(
-    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-    child: ExpansionTile(
-      tilePadding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-      maintainState: true,
-      
-      // ✅ NOMBRE + FORMATO en UNA SOLA LÍNEA
-      title: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // NOMBRE (protagonista)
-          Expanded(
-            child: Text(
-              name,
-              maxLines: 1,overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-                color: Colors.black87,
-              ),
-            ),
-          ),
-          // FORMATO al lado (secundario)
-          if (fmt.isNotEmpty) ...[
-            const SizedBox(width: 6),  // ← ESPACIO entre ellos
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                fmt,
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 11,
-                  color: Colors.grey.shade700,
+    return Dismissible(
+      key: ValueKey(d.id),
+      direction:
+          _isMe ? DismissDirection.horizontal : DismissDirection.none,
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        color: Colors.blueGrey,
+        child: const Icon(Icons.edit, color: Colors.white),
+      ),
+      secondaryBackground: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        color: Colors.red,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      confirmDismiss: (direction) async {
+        if (!_isMe) return false;
+
+        if (direction == DismissDirection.startToEnd) {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Edit deck?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
                 ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Edit'),
+                ),
+              ],
+            ),
+          );
+
+          if (confirm == true) {
+            final changed = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => EditDeckScreen(
+                  deckId: d.id,
+                  initialCommanderName: d.commanderName,
+                  initialDeckUrl: d.deckUrl,
+                  initialFormatSlug: d.formatSlug,
+                  initialExportText: d.exportText,
+                  initialW: d.w,
+                  initialU: d.u,
+                  initialB: d.b,
+                  initialR: d.r,
+                  initialG: d.g,
+                  initialC: d.c,
+                ),
+              ),
+            );
+
+            if (changed == true) await _reload();
+          }
+
+          return false;
+        }
+
+        if (direction == DismissDirection.endToStart) {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Delete deck?'),
+              content: const Text('This cannot be undone.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          );
+
+          if (confirm == true) {
+            await _deleteDeck(d.id);
+            await _reload();
+            return true;
+          }
+        }
+
+        return false;
+      },
+      child: ExpansionTile(
+        tilePadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        childrenPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        title: Row(
+          children: [
+            _deckImage(d, name),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+
+                  if ((d.formatSlug ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      d.formatSlug![0].toUpperCase() +
+                        d.formatSlug!.substring(1),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 4),
+                  _deckColors(d),
+                ],
               ),
             ),
           ],
+        ),
+        children: [
+          if ((d.deckUrl ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: GestureDetector(
+                onTap: () => _openDeckUrl(d.deckUrl!),
+                child: Text(
+                  'Open deck link',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          if ((d.exportText ?? '').isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                d.exportText!,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
+              ),
+            ),
         ],
       ),
-      subtitle: _deckColors(d),
-      trailing: hasExport ? const Icon(Icons.expand_more, size: 20) : null,
-      children: [
-        if (hasLink)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8, left: 4, right: 4),
-            child: OutlinedButton.icon(
-              onPressed: () => _openDeckUrl(d.deckUrl!),
-              icon: const Icon(Icons.link, size: 14),
-              label: const Text('Open', style: TextStyle(fontSize: 12)),
-              style: OutlinedButton.styleFrom(
-                visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-          ),
-        
-        if (hasExport) ...[
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.black12),
-            ),
-            child: SelectableText(
-              export,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ] else ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              _isMe ? 'No export text yet.' : 'No export text.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-          ),
-        ],
-      ],
-    ),
-  );
-}
+    );
+  }
 
   Widget _decksSection() {
     return FutureBuilder<List<_PublicDeck>>(
       future: _decksFuture,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snap.hasError) {
           return const Padding(
-            padding: EdgeInsets.only(top: 10),
-            child: Center(child: CircularProgressIndicator()),
+            padding: EdgeInsets.all(16),
+            child: Text('Failed to load decks'),
           );
         }
 
-        final decks = snap.data ?? const <_PublicDeck>[];
+        final decks = snap.data ?? [];
 
-        return Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.black12),
-            borderRadius: BorderRadius.circular(14),
-            color: Colors.white.withOpacity(0.55),
-          ),
-          child: ExpansionTile(
-            initiallyExpanded: false,
-            tilePadding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            title: Row(
-              children: [
-                Text(
-                  'Decks',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Text(
+                    'Decks',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16),
+                  ),
+                  const Spacer(),
+                  if (_isMe)
+                    SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.add, size: 20),
+                        onPressed: () async {
+                          final changed =
+                              await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const EditDeckScreen(),
+                            ),
+                          );
+
+                          if (changed == true) await _reload();
+                        },
                       ),
-                ),
-                const Spacer(),
-                if (_isMe)
-                  TextButton.icon(
-                    onPressed: _openMyDecks,
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Manage'),
-                  ),
-              ],
+                    ),
+                ],
+              ),
             ),
-            children: [
-              if (decks.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(_isMe ? 'No decks yet.' : 'No decks.'),
-                )
-              else
-                ...decks.map(_deckCard).toList(),
-              if (decks.length >= 10)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    'Showing latest 10 decks',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
-                  ),
-                ),
-            ],
-          ),
+            const SizedBox(height: 6),
+            if (decks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                child: Text('No decks yet.'),
+              )
+            else
+              ...decks.map(_deckTile).toList(),
+          ],
         );
       },
+    );
+  }
+
+  Widget _avatar(ImageProvider? avatar) {
+    final r = BorderRadius.circular(24);
+    return ClipRRect(
+      borderRadius: r,
+      child: Container(
+        width: 88,
+        height: 88,
+        color: Colors.grey.shade200,
+        child: avatar != null
+            ? Image(image: avatar, fit: BoxFit.cover)
+            : const Icon(Icons.person, size: 42),
+      ),
     );
   }
 
@@ -569,94 +519,89 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snap.hasError) {
-              return ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  const SizedBox(height: 120),
-                  Center(child: Text('Error: ${snap.error}')),
-                ],
-              );
+            if (snap.hasError || snap.data == null) {
+              return const Center(child: Text('Failed to load profile'));
             }
 
             final p = snap.data!;
-            final bio = (p.bio ?? '').trim();
-            final arena = (p.mtgArenaUsername ?? '').trim();
-            final hasAvatar = (p.avatarUrl ?? '').trim().isNotEmpty;
-            final ImageProvider? avatar = hasAvatar ? NetworkImage(p.avatarUrl!) : null;
+
+            final avatar = (p.avatarUrl ?? '').isNotEmpty
+                ? NetworkImage(p.avatarUrl!)
+                : null;
 
             return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding:
+                  const EdgeInsets.symmetric(vertical: 20),
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.black12),
-                    borderRadius: BorderRadius.circular(16),
-                    color: Colors.white.withOpacity(0.55),
-                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
-                      _squircleAvatar(
-                        avatar: avatar,
-                        onTap: avatar == null ? null : () => _openAvatarPreview(avatar),
-                        size: 88,
-                      ),
-                      const SizedBox(width: 12),
+                      _avatar(avatar),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              p.nickname.isNotEmpty ? p.nickname : 'Player',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    p.nickname.isNotEmpty
+                                        ? p.nickname
+                                        : 'Player',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(
+                                            fontWeight:
+                                                FontWeight.w700),
+                                  ),
+                                ),
+                                if (_isMe)
+                                  GestureDetector(
+                                    onTap: () =>
+                                        _openEdit(p),
+                                    child: Text(
+                                      'Edit',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        fontWeight:
+                                            FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 6),
-                            if (arena.isNotEmpty) ...[
-                              Chip(
-                                avatar: const Icon(Icons.videogame_asset_outlined, size: 18),
-                                label: Text('Arena: $arena'),
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              const SizedBox(height: 6),
-                            ],
-                            if (bio.isNotEmpty)
+                            if ((p.mtgArenaUsername ?? '')
+                                .isNotEmpty)
                               Text(
-                                bio,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
+                                'Arena · ${p.mtgArenaUsername}',
                                 style: TextStyle(
-                                  color: Colors.grey.shade800,
-                                  height: 1.25,
-                                ),
+                                    color: Colors.grey.shade600),
                               ),
-                            _statsRow(p),
+                            if ((p.bio ?? '').isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                p.bio!,
+                                style:
+                                    const TextStyle(height: 1.3),
+                              ),
+                            ],
                           ],
                         ),
                       ),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 12),
-
-                if (_isMe) ...[
-                  FilledButton.icon(
-                    onPressed: () => _openEdit(p),
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit profile'),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
+                const SizedBox(height: 28),
                 _decksSection(),
               ],
             );
@@ -664,5 +609,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openEdit(PublicProfile p) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(
+          service: ProfileService(),
+          initialNickname: p.nickname,
+          initialAvatarUrl: p.avatarUrl,
+          initialBio: p.bio,
+          initialMtgArenaUsername: p.mtgArenaUsername,
+        ),
+      ),
+    );
+
+    if (changed == true) await _reload();
   }
 }

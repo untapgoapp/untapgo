@@ -5,8 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/public_profile.dart';
 
 class ProfileService {
-  /// ✅ PRODUCCIÓN
   static const String backendBaseUrl = 'https://tapin-backend.fly.dev';
+  static const Duration _timeout = Duration(seconds: 12);
 
   Map<String, String> _headers() {
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
@@ -20,22 +20,56 @@ class ProfileService {
     };
   }
 
+  // --------------------------------------------------
+  // GET profile + decks
+  // --------------------------------------------------
+
   Future<PublicProfile> getProfile(String userId) async {
-    final res = await http
+    // 1️⃣ Load profile
+    final profileRes = await http
         .get(
           Uri.parse('$backendBaseUrl/profiles/$userId'),
           headers: _headers(),
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(_timeout);
 
-    if (res.statusCode != 200) {
-      throw Exception('Failed to load profile: ${res.body}');
+    if (profileRes.statusCode != 200) {
+      throw Exception(
+        'GET /profiles/$userId failed: '
+        '${profileRes.statusCode} ${profileRes.body}',
+      );
     }
 
-    return PublicProfile.fromJson(
-      jsonDecode(res.body) as Map<String, dynamic>,
-    );
+    // 2️⃣ Load public decks
+    final decksRes = await http
+        .get(
+          Uri.parse('$backendBaseUrl/profiles/$userId/decks'),
+          headers: _headers(),
+        )
+        .timeout(_timeout);
+
+    if (decksRes.statusCode != 200) {
+      throw Exception(
+        'GET /profiles/$userId/decks failed: '
+        '${decksRes.statusCode} ${decksRes.body}',
+      );
+    }
+
+    final profileJson =
+        jsonDecode(profileRes.body) as Map<String, dynamic>;
+
+    final decksJson =
+        jsonDecode(decksRes.body) as Map<String, dynamic>;
+
+    // Inject decks into profile payload
+    profileJson['decks'] = decksJson['decks'] ?? [];
+
+    return PublicProfile.fromJson(profileJson);
   }
+
+  // --------------------------------------------------
+  // UPDATE my profile
+  // --------------------------------------------------
 
   Future<void> updateMyProfile({
     required String nickname,
@@ -59,10 +93,13 @@ class ProfileService {
           headers: _headers(),
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(_timeout);
 
     if (res.statusCode != 200) {
-      throw Exception('Failed to update profile: ${res.body}');
+      throw Exception(
+        'PATCH /me/profile failed: '
+        '${res.statusCode} ${res.body}',
+      );
     }
   }
 }
