@@ -6,10 +6,22 @@ import '../core/theme/app_colors.dart';
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
 
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      // puedes añadir snackbar si quieres
+  Future<void> _openUrl(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+
+    final ok = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not open link'),
+          backgroundColor: Colors.grey.shade900,
+        ),
+      );
     }
   }
 
@@ -37,17 +49,19 @@ class SupportScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.bug_report_outlined),
             title: const Text('Report a bug'),
-            onTap: () {
-              _openUrl('mailto:untapgoapp@gmail.com');
-            },
+            onTap: () => _openUrl(
+              context,
+              'mailto:untapgoapp@gmail.com',
+            ),
           ),
 
           ListTile(
             leading: const Icon(Icons.email_outlined),
             title: const Text('Contact'),
-            onTap: () {
-              _openUrl('mailto:untapgoapp@gmail.com');
-            },
+            onTap: () => _openUrl(
+              context,
+              'mailto:untapgoapp@gmail.com',
+            ),
           ),
 
           const SizedBox(height: 24),
@@ -66,9 +80,10 @@ class SupportScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.star_border),
             title: const Text('Rate UntapGo'),
-            onTap: () {
-              // TODO: add store link
-            },
+            onTap: () => _openUrl(
+              context,
+              'https://play.google.com/store/apps/details?id=com.untapgo.app',
+            ),
           ),
 
           Container(
@@ -90,12 +105,12 @@ class SupportScreen extends StatelessWidget {
                 ),
               ),
               subtitle: const Text('Support development'),
-              onTap: () {
-                _openUrl('https://ko-fi.com/untapgo');
-              },
+              onTap: () => _openUrl(
+                context,
+                'https://buymeacoffee.com/untapgo',
+              ),
             ),
           ),
-
         ],
       ),
     );
