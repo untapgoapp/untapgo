@@ -173,6 +173,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool get _isEnded => _status == 'ended';
   bool get _isCancelled => _status == 'cancelled';
 
+  bool get _canEditEvent => _isHost && _isOpen;
+
   // ─────────────────────────────────────────────────────────────
   // Membership state (my_status is source of truth)
   // ─────────────────────────────────────────────────────────────
@@ -517,6 +519,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   // ✅ CHANGE: EditEvent now returns Event? (not bool)
   Future<void> _openEditEvent() async {
+    if (!_canEditEvent) return;
+    
     final updated = await Navigator.push<Event?>(
       context,
       MaterialPageRoute(
@@ -898,7 +902,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             onPressed: () => Navigator.pop(context, _changed),
           ),
           actions: [
-            if (_isHost)
+            if (_canEditEvent)
               IconButton(
                 icon: const Icon(Icons.edit),
                 onPressed: _busy ? null : _openEditEvent,

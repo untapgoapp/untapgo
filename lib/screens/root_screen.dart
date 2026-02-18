@@ -157,7 +157,7 @@ class _RootScreenState extends State<RootScreen> {
     _notifChannel = supabase
         .channel('notifications:user_id=eq.$userId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'notifications',
           callback: (payload) {
@@ -166,11 +166,24 @@ class _RootScreenState extends State<RootScreen> {
             final row = payload.newRecord;
             if (row.isEmpty) return;
 
+            final eventType = payload.eventType;
+
             setState(() {
-              _notifications.insert(0, row);
-              _unreadCount++;
+              if (eventType == PostgresChangeEvent.update) {
+                final index =
+                  _notifications.indexWhere((n) => n['id'] == row['id']);
+                if (index != -1) {
+                  _notifications[index] = row;
+                }
+              } else if (eventType == PostgresChangeEvent.insert) {
+                _notifications.insert(0, row);
+                _unreadCount++;
+              }
+
+              _unreadCount = _notifications.length;
             });
           },
+
         )
         .subscribe();
   }
@@ -478,8 +491,37 @@ class _RootScreenState extends State<RootScreen> {
           (n) => PopupMenuItem<Object?>(
             value: n,
             child: ListTile(
-              title: Text(n['title'] ?? 'New notification'),
-              subtitle: n['body'] != null ? Text(n['body']) : null,
+              title: Builder(
+                builder: (_) {
+                  final type = n['type'];
+                  final meta = n['meta'] as Map<String, dynamic>?;
+
+                  String title = n['title'] ?? '';
+                  String body = n['body'] ?? '';
+
+                  if (type == 'pending_requests' && meta != null) {
+                    final count = meta['request_count'] ?? 1;
+                    title = 'Pending requests';
+                    body = 'You have $count pending request(s).';
+                  } else
+
+                  if (title.isEmpty) {
+                    title = 'Notification';
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title),
+                      if (body.isNotEmpty)
+                        Text(
+                          body,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                    ],
+                  );
+                },
+              ),
               onTap: () async {
                 Navigator.pop(context);
 
@@ -498,6 +540,7 @@ class _RootScreenState extends State<RootScreen> {
                 );
               },
             ),
+
           ),
         ),
       ],

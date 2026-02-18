@@ -208,7 +208,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final body = {
       "input": query,
       "sessionToken": _sessionToken,
-      "includedRegionCodes": ["US"],
+      "includedRegionCodes": ["US", "CA"],
     };
 
     try {
