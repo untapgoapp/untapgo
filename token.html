@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Get Supabase Token</title>
+</head>
+<body>
+
+<script type="module">
+  import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+  const supabase = createClient(
+    "https://lofprlmlpdtulapypqcy.supabase.co",
+    
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvZnBybG1scGR0dWxhcHlwcWN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4MTE0MzAsImV4cCI6MjA4MzM4NzQzMH0.JylasnFWhvs-W5K_ifKSt7M9Fx-O9RYcP-_s25_GSlo"
+  );
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: “markfeesti@gmail.com”,
+    password: "Caldodecarne01"
+  });
+
+  if (error) {
+    console.error("LOGIN ERROR:", error);
+  } else {
+    console.log("ACCESS TOKEN:");
+    console.log(data.session.access_token);
+  }
+</script>
+
+</body>
+</html>
+
