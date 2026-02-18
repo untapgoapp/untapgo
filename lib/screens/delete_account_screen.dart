@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 
 import '../services/profile_service.dart';
-import '../services/event_service.dart'; // usa tu baseUrl de aquí
+// usa tu baseUrl de aquí
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});

@@ -314,7 +314,7 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
           const SizedBox(height: 12),
 
           DropdownButtonFormField<String>(
-            value: _formatSlug,
+            initialValue: _formatSlug,
             items: _formatOptions
                 .map(
                   (o) => DropdownMenuItem(

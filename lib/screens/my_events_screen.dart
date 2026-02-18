@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 
 import '../models/event.dart';
 import '../services/event_service.dart';
-import 'attendees_screen.dart';
 import 'event_detail_screen.dart';
 
 class MyEventsScreen extends StatefulWidget {
