@@ -1,4 +1,4 @@
-# Miscellaneous
+v# Miscellaneous
 *.class
 *.log
 *.pyc
@@ -50,3 +50,7 @@ android/build/
 android/build/
 build/
 .dart_tool/
+# Environment variables
+.env
+.env.*
+
