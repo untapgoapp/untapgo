@@ -108,7 +108,12 @@ class EventService {
 
   /// 🔐 Authorization obligatorio
   Map<String, String> _headers({bool json = false}) {
+    final session = Supabase.instance.client.auth.currentSession;
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
+
+      print('SESSION NULL? ${session == null}');
+      print('TOKEN NULL? ${token == null}');
+      print('USER ID: ${session?.user.id}');
     if (token == null) {
       throw Exception('No Supabase access token available');
     }

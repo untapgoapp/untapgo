@@ -22,6 +22,10 @@ class AuthGate extends StatelessWidget {
         // ✅ SIEMPRE leer la sesión real desde aquí
         final session = Supabase.instance.client.auth.currentSession;
 
+        print('AUTHGATE SESSION EXISTS: ${session != null}');
+        print('AUTHGATE USER: ${session?.user.id}');
+        print('Hello from AuthGate!');
+
         if (session == null) {
           return const LoginScreen();
         }

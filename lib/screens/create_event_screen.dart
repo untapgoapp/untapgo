@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import '../services/event_service.dart';
 import '../models/event.dart';
 
-/// TODO: move to env/flavors. For now, this is just a placeholder.
 const String kGoogleMapsApiKey = 'AIzaSyDOEmRGIwDF3WEvbouSeIBL7JloiW78GzA';
 
 const List<String> kPowerLevels = [
