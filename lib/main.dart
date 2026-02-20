@@ -3,9 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/auth_gate.dart';
 import 'services/settings_store.dart';
+import 'dart:io';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 👇 Fuerza IPv4 en Android
+  if (Platform.isAndroid) {
+    HttpOverrides.global = MyHttpOverrides();
+  }
 
   await Supabase.initialize(
     url: 'https://lofprlmlpdtulapypqcy.supabase.co',
@@ -32,5 +37,13 @@ class UntapGoApp extends StatelessWidget {
       ),
       home: const AuthGate(),
     );
+  }
+}
+
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..connectionTimeout = const Duration(seconds: 15);
   }
 }
