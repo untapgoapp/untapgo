@@ -91,19 +91,19 @@ class _LoginScreenState extends State<LoginScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 12),
 
-                Center(
-                  child: Image.asset(
-                    'assets/branding/ugo_inverted_small.png',
-                    width: 200,
-                    height: 200,
+                  Center(
+                    child: Image.asset(
+                      'assets/branding/ugo_inverted_small.png',
+                      width: 200,
+                      height: 200,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
+
+                  const SizedBox(height: 20),
 
                   Text(
                     'Find your table.',
@@ -123,8 +123,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       labelText: 'Email',
                       border: OutlineInputBorder(),
                     ),
-                    textInputAction: TextInputAction.next,
                   ),
+
                   const SizedBox(height: 16),
 
                   TextField(
@@ -140,7 +140,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Container(
-                      width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: Colors.red.shade50,
@@ -156,15 +155,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 16),
 
-                  FilledButton(
-                    onPressed: _busy ? null : _signIn,
-                    child: Text(_busy ? '...' : 'Sign in'),
+                  SizedBox(
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _busy ? null : _signIn,
+                      style: FilledButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      child: Text(_busy ? '...' : 'Sign in'),
+                    ),
                   ),
+
                   const SizedBox(height: 10),
 
-                  OutlinedButton(
-                    onPressed: _busy ? null : _signUp,
-                    child: Text(_busy ? '...' : 'Sign up'),
+                  SizedBox(
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : _signUp,
+                      style: OutlinedButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      child: Text(_busy ? '...' : 'Sign up'),
+                    ),
                   ),
 
                   const SizedBox(height: 18),
@@ -180,12 +192,37 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 18),
 
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _signInWithGoogle,
-                    icon: const Icon(Icons.g_mobiledata, size: 30),
-                    label: Text(_busy ? '...' : 'Continue with Google'),
+                  /// 🔥 GOOGLE BUTTON (PILL SHAPE)
+                  SizedBox(
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : _signInWithGoogle,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0xFFDADCE0)),
+                        shape: const StadiumBorder(), // 👈 AQUÍ EL CAMBIO
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'assets/branding/google/g_logo.png',
+                            height: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            _busy ? '...' : 'Continue with Google',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
 
                   const SizedBox(height: 10),

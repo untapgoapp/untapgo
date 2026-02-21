@@ -1,4 +1,5 @@
 import 'deck.dart';
+import 'badge.dart';
 
 class PublicProfile {
   final String id;
@@ -10,6 +11,7 @@ class PublicProfile {
   final String? mtgArenaUsername;
 
   final List<Deck> decks;
+  final List<Badge> badges;
 
   PublicProfile({
     required this.id,
@@ -18,6 +20,7 @@ class PublicProfile {
     this.bio,
     this.mtgArenaUsername,
     required this.decks,
+    required this.badges,
   });
 
   factory PublicProfile.fromJson(Map<String, dynamic> json) {
@@ -28,6 +31,7 @@ class PublicProfile {
     }
 
     final rawDecks = json['decks'] as List<dynamic>? ?? [];
+    final rawBadges = json['badges'] as List<dynamic>? ?? [];
 
     return PublicProfile(
       id: s(json['id']),
@@ -37,6 +41,9 @@ class PublicProfile {
       mtgArenaUsername: ss(json['mtg_arena_username']),
       decks: rawDecks
           .map((d) => Deck.fromJson(d as Map<String, dynamic>))
+          .toList(),
+      badges: rawBadges
+          .map((b) => Badge.fromJson(b as Map<String, dynamic>))
           .toList(),
     );
   }

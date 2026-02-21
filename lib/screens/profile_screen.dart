@@ -10,51 +10,10 @@ import '../services/event_service.dart';
 import '../services/profile_service.dart';
 import 'edit_profile_screen.dart';
 import 'edit_deck_screen.dart';
+import '../widgets/badge_widget.dart';
+import '../models/badge.dart';
+import '../models/public_profile.dart';
 
-class PublicProfile {
-  final String id;
-  final String nickname;
-  final String? avatarUrl;
-  final String? bio;
-  final String? mtgArenaUsername;
-  final int hostedCount;
-  final int playedCount;
-
-  PublicProfile({
-    required this.id,
-    required this.nickname,
-    this.avatarUrl,
-    this.bio,
-    this.mtgArenaUsername,
-    this.hostedCount = 0,
-    this.playedCount = 0,
-  });
-
-  factory PublicProfile.fromJson(Map<String, dynamic> json) {
-    String s(dynamic v) => v == null ? '' : v.toString();
-    String? ss(dynamic v) {
-      final t = s(v).trim();
-      return t.isEmpty ? null : t;
-    }
-
-    int ii(dynamic v) {
-      if (v is int) return v;
-      if (v is num) return v.toInt();
-      if (v is String) return int.tryParse(v) ?? 0;
-      return 0;
-    }
-
-    return PublicProfile(
-      id: s(json['id'] ?? json['user_id']),
-      nickname: s(json['nickname']),
-      avatarUrl: ss(json['avatar_url']),
-      bio: ss(json['bio']),
-      mtgArenaUsername: ss(json['mtg_arena_username']),
-      hostedCount: ii(json['hosted_count']),
-      playedCount: ii(json['played_count']),
-    );
-  }
-}
 
 class _PublicDeck {
   final String id;
@@ -524,6 +483,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
 
             final p = snap.data!;
+            
 
             final avatar = (p.avatarUrl ?? '').isNotEmpty
                 ? NetworkImage(p.avatarUrl!)
@@ -580,21 +540,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ],
                             ),
                             const SizedBox(height: 6),
-                            if ((p.mtgArenaUsername ?? '')
-                                .isNotEmpty)
-                              Text(
-                                'Arena · ${p.mtgArenaUsername}',
-                                style: TextStyle(
-                                    color: Colors.grey.shade600),
-                              ),
-                            if ((p.bio ?? '').isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                p.bio!,
-                                style:
-                                    const TextStyle(height: 1.3),
-                              ),
-                            ],
+
+                            // 🔹 Badge (si tiene)
+                            if (p.badges.isNotEmpty) ...[
+                              Wrap(
+                                spacing: 6,
+                                children: p.badges.map((badge) {
+                                  return BadgeWidget(
+                                    icon: badge.icon,
+                                    size: 18
+                                    );
+                                  }).toList(),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+
+                              // 🔹 Arena tag
+                              if ((p.mtgArenaUsername ?? '').isNotEmpty)
+                                Text(
+                                  'Arena · ${p.mtgArenaUsername}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFFDB5C42),
+                                  )
+                                ),
+
+                              // 🔹 Bio
+                              if ((p.bio ?? '').isNotEmpty) ...[
+                                const SizedBox(height: 5),
+                                Text(
+                                  p.bio!,
+                                  style: const TextStyle(height: 1.3),
+                                ),
+                              ],
                           ],
                         ),
                       ),

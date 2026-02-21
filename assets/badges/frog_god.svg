@@ -1,0 +1,11 @@
+<svg viewBox="0 0 260 56" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Dark green capsule -->
+  <rect x="0" y="0" width="260" height="56" rx="28" fill="#1E3A2A"></rect>
+
+  <!-- Gold text -->
+  <text x="130" y="38" font-family="Georgia, serif" font-size="40" text-anchor="middle" fill="#D4AF37" letter-spacing="2">
+    frog god
+  </text>
+
+</svg>
