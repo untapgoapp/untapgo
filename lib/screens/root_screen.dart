@@ -16,6 +16,7 @@ import 'about_screen.dart';
 import 'event_detail_screen.dart';
 import 'support_screen.dart';
 import 'safety_screen.dart';
+import 'favorites_screen.dart';
 
 
 class RootScreen extends StatefulWidget {
@@ -46,27 +47,16 @@ class _RootScreenState extends State<RootScreen> {
     super.initState();
 
     final session = supabase.auth.currentSession;
-    print('INITIAL SESSION: ${session != null}');
-
     if (session != null) {
       _initUser(session.user.id);
     }
 
     _authSub = supabase.auth.onAuthStateChange.listen((data) {
-      print('AUTH CHANGE: ${data.session != null}');
-      print('SESSION USER ID: ${data.session?.user.id}');
-      print('CURRENT USER: ${supabase.auth.currentUser?.id}');
-
-      final userId = supabase.auth.currentUser?.id;
+      final userId = data.session?.user.id;
       if (userId != null) {
         _initUser(userId);
       }
     });
-
-    final userId = supabase.auth.currentUser?.id;
-    if (userId != null) {
-      _initUser(userId);
-    }
   }
 
   void _initUser(String userId) {
@@ -356,6 +346,23 @@ class _RootScreenState extends State<RootScreen> {
 
             const SizedBox(height: 24),
             const Divider(),
+
+            ListTile(
+              leading: const Icon(
+                Icons.favorite_border,
+                color: AppColors.coolGray,
+              ),
+              title: const Text('Favorites'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const FavoritesScreen(),
+                  ),
+                );
+              },
+            ),
 
             ListTile(
               leading: const Icon(Icons.settings, color: AppColors.coolGray),

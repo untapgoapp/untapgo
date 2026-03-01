@@ -85,11 +85,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return me != null && me == widget.userId;
   }
 
+  bool _isFavorite = false;
+  bool _favoriteLoading = false;
+
+  bool _blockedByMe = false;
+  bool _blockLoading = false;
+
   @override
   void initState() {
     super.initState();
     _future = _fetchProfile();
     _decksFuture = _fetchDecks();
+    _loadFavoriteStatus();
+    _loadBlockStatus();
   }
 
   Map<String, String> _headers() {
@@ -109,6 +117,110 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (res.statusCode != 200) throw Exception(res.body);
     return PublicProfile.fromJson(jsonDecode(res.body));
+  }
+
+  Future<void> _loadFavoriteStatus() async {
+    if (_isMe) return;
+
+    try {
+      final result =
+        await ProfileService().isFavorite(widget.userId);
+
+      if (!mounted) return;
+
+      setState(() {
+        _isFavorite = result;
+      });
+    } catch (_) {
+    // silencioso
+    }
+  }
+
+  Future<void> _loadBlockStatus() async {
+    if (_isMe) return;
+
+    try {
+      final result =
+        await ProfileService().getBlockStatus(widget.userId);
+
+      if (!mounted) return;
+
+      setState(() {
+        _blockedByMe = result['blocked_by_me'] == true;
+      });
+    } catch (_) {
+      // silencioso
+    }
+  }
+
+  Future<void> _confirmBlock() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Block user?'),
+        content: const Text(
+          'You won’t see their events or profile anymore.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Block',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _blockLoading = true);
+
+      try {
+        await ProfileService().blockUser(widget.userId);
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User blocked')),
+        );
+
+        Navigator.pop(context); // salir del perfil
+      } catch (_) {
+        // opcional snackbar error
+      } finally {
+        if (mounted) {
+          setState(() => _blockLoading = false);
+        }
+      }
+    }
+  }
+
+  Future<void> _unblock() async {
+    setState(() => _blockLoading = true);
+
+    try {
+      await ProfileService().unblockUser(widget.userId);
+
+      if (!mounted) return;
+
+      setState(() {
+        _blockedByMe = false;
+    });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User unblocked')),
+      );
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() => _blockLoading = false);
+      }
+    }
   }
 
   Future<List<_PublicDeck>> _fetchDecks() async {
@@ -468,7 +580,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        actions: [
+          if (!_isMe) // no permitir favorite a uno mismo
+            IconButton(
+              icon: Icon(
+                _isFavorite
+                    ? Icons.favorite
+                    : Icons.favorite_border,
+                color: _isFavorite ? Colors.red : null,
+              ),
+              onPressed: _favoriteLoading
+                  ? null
+                  : () async {
+                      setState(() {
+                        _favoriteLoading = true;
+                      });
+
+                      try {
+                        final service = ProfileService();
+
+                        if (_isFavorite) {
+                          await service.unfavorite(widget.userId);
+                        } else {
+                          await service.favorite(widget.userId);
+                        }
+
+                        if (!mounted) return;
+
+                        setState(() {
+                          _isFavorite = !_isFavorite;
+                        });
+                      } catch (_) {
+                        // opcional: snackbar
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            _favoriteLoading = false;
+                          });
+                        }
+                      }
+                    },
+            ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _reload,
         child: FutureBuilder<PublicProfile>(
@@ -582,6 +738,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 28),
                 _decksSection(),
+
+                if (!_isMe) ...[
+                  const SizedBox(height: 32),
+                  const Divider(),
+
+                  ListTile(
+                    leading: const Icon(Icons.flag_outlined),
+                    title: const Text('Report user'),
+                    onTap: _openReportSheet,
+                  ),
+
+                  if (!_blockedByMe)
+                    ListTile(
+                      leading: const Icon(Icons.block, color: Colors.red),
+                      title: const Text(
+                        'Block user',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      onTap: _blockLoading ? null : _confirmBlock,
+                    ),
+
+                  if (_blockedByMe)
+                    ListTile(
+                      leading: const Icon(Icons.lock_open),
+                      title: const Text('Unblock user'),
+                      onTap: _blockLoading ? null : _unblock,
+                    ),
+                ],
               ],
             );
           },
@@ -605,5 +789,102 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (changed == true) await _reload();
+  }
+
+
+  Future<void> _openReportSheet() async {
+    final controller = TextEditingController();
+    String selectedReason = 'Inappropriate behavior';
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Report user',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: selectedReason,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'Inappropriate behavior',
+                    child: Text('Inappropriate behavior'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Harassment',
+                    child: Text('Harassment'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Spam',
+                    child: Text('Spam'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Other',
+                    child: Text('Other'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) selectedReason = v;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Optional details',
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Submit report'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      try {
+        await ProfileService().reportUser(
+          profileId: widget.userId,
+          reason: selectedReason,
+          details: controller.text,
+        );
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report submitted'),
+          ),
+        );
+      } catch (_) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to submit report'),
+          ),
+        );
+      } 
+    }
   }
 }

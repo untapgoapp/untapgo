@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/public_profile.dart';
+import '../models/favorite_profile.dart';
 
 class ProfileService {
   static const String backendBaseUrl = 'https://tapin-backend.fly.dev';
@@ -20,12 +21,30 @@ class ProfileService {
     };
   }
 
+  Future<void> reportUser({
+    required String profileId,
+    required String reason,
+    String? details,
+  }) async {
+    final res = await http.post(
+      Uri.parse('$backendBaseUrl/profiles/$profileId/report'),
+      headers: _headers(),
+      body: jsonEncode({
+        "reason": reason,
+        "details": details,
+      }),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
+    }
+  }
+
   // --------------------------------------------------
   // GET profile + decks
   // --------------------------------------------------
 
   Future<PublicProfile> getProfile(String userId) async {
-    // 1️⃣ Load profile
     final profileRes = await http
         .get(
           Uri.parse('$backendBaseUrl/profiles/$userId'),
@@ -40,7 +59,6 @@ class ProfileService {
       );
     }
 
-    // 2️⃣ Load public decks
     final decksRes = await http
         .get(
           Uri.parse('$backendBaseUrl/profiles/$userId/decks'),
@@ -61,7 +79,6 @@ class ProfileService {
     final decksJson =
         jsonDecode(decksRes.body) as Map<String, dynamic>;
 
-    // Inject decks into profile payload
     profileJson['decks'] = decksJson['decks'] ?? [];
 
     return PublicProfile.fromJson(profileJson);
@@ -100,6 +117,126 @@ class ProfileService {
         'PATCH /me/profile failed: '
         '${res.statusCode} ${res.body}',
       );
+    }
+  }
+
+  // --------------------------------------------------
+  // FAVORITES
+  // --------------------------------------------------
+
+  Future<List<FavoriteProfile>> fetchFavorites() async {
+    final res = await http
+        .get(
+          Uri.parse('$backendBaseUrl/profiles/me/favorites'),
+          headers: _headers(),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) {
+      throw Exception(
+        'GET /profiles/me/favorites failed: '
+        '${res.statusCode} ${res.body}',
+      );
+    }
+
+    final List data = jsonDecode(res.body);
+    return data
+        .map((e) => FavoriteProfile.fromJson(e))
+        .toList();
+  }
+
+  Future<bool> isFavorite(String profileId) async {
+    final res = await http
+        .get(
+          Uri.parse('$backendBaseUrl/profiles/$profileId/is-favorite'),
+          headers: _headers(),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
+    }
+
+    final data = jsonDecode(res.body);
+    return data['is_favorite'] == true;
+  }
+
+  Future<void> favorite(String profileId) async {
+    final res = await http.post(
+      Uri.parse('$backendBaseUrl/profiles/$profileId/favorite'),
+      headers: _headers(),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
+    }
+  }
+
+  Future<void> unfavorite(String profileId) async {
+    final res = await http.delete(
+      Uri.parse('$backendBaseUrl/profiles/$profileId/favorite'),
+      headers: _headers(),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
+    }
+  }
+
+  Future<void> clearFavorites() async {
+    final res = await http.delete(
+      Uri.parse('$backendBaseUrl/profiles/me/favorites'),
+      headers: _headers(),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
+    }
+  }
+
+  // --------------------------------------------------
+  // BLOCKS
+  // --------------------------------------------------
+
+  Future<Map<String, bool>> getBlockStatus(String profileId) async {
+    final res = await http
+        .get(
+          Uri.parse('$backendBaseUrl/profiles/$profileId/is-blocked'),
+          headers: _headers(),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
+    }
+
+    final data = jsonDecode(res.body);
+
+    return {
+      'blocked_by_me': data['blocked_by_me'] == true,
+      'blocked_me': data['blocked_me'] == true,
+    };
+  }
+
+  Future<void> blockUser(String profileId) async {
+    final res = await http.post(
+      Uri.parse('$backendBaseUrl/profiles/$profileId/block'),
+      headers: _headers(),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
+    }
+  }
+
+  Future<void> unblockUser(String profileId) async {
+    final res = await http.delete(
+      Uri.parse('$backendBaseUrl/profiles/$profileId/block'),
+      headers: _headers(),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(res.body);
     }
   }
 }

@@ -5,23 +5,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/settings_store.dart';
 import '../services/profile_service.dart';
 import '../utils/zip_geocoding.dart';
+import 'settings/blocked_users_overlay.dart';
 
 // TODO: mueve esto a config central cuando deje de ser alpha
-const String _googleMapsApiKey = 'AIzaSyDOEmRGIwDF3WEvbouSeIBL7JloiW78GzA';
+const String _googleMapsApiKey =
+    'AIzaSyDOEmRGIwDF3WEvbouSeIBL7JloiW78GzA';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  State<SettingsScreen> createState() =>
+      _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState
+    extends State<SettingsScreen> {
   bool _loading = false;
 
   @override
   Widget build(BuildContext context) {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user =
+        Supabase.instance.client.auth.currentUser;
 
     return Scaffold(
       appBar: AppBar(
@@ -33,14 +38,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding:
+                    const EdgeInsets.all(16),
                 children: [
-                  // Account
+                  // ---------------- ACCOUNT ----------------
                   if (user != null) ...[
                     Text(
                       'Account',
-                      style:
-                          Theme.of(context).textTheme.titleMedium,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium,
                     ),
                     const SizedBox(height: 8),
                     Text(user.email ?? '-'),
@@ -50,35 +57,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
-                          ?.copyWith(color: Colors.black54),
+                          ?.copyWith(
+                              color:
+                                  Colors.black54),
                     ),
+                    const SizedBox(height: 16),
+
+                    ListTile(
+                      contentPadding:
+                          EdgeInsets.zero,
+                      leading:
+                          const Icon(Icons.block),
+                      title: const Text(
+                          'Blocked users'),
+                      trailing: const Icon(
+                          Icons.chevron_right),
+                      onTap: _openBlockedUsers,
+                    ),
+
                     const SizedBox(height: 24),
                   ],
 
-                  // Location
+                  // ---------------- LOCATION ----------------
                   Text(
                     'Location',
-                    style:
-                        Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium,
                   ),
                   const SizedBox(height: 8),
-                  ValueListenableBuilder<LocationSource>(
+                  ValueListenableBuilder<
+                      LocationSource>(
                     valueListenable:
-                        SettingsStore.locationSource,
-                    builder: (context, source, _) {
+                        SettingsStore
+                            .locationSource,
+                    builder:
+                        (context, source, _) {
                       final subtitle =
-                          source == LocationSource.zip
+                          source ==
+                                  LocationSource
+                                      .zip
                               ? 'Using ZIP ${SettingsStore.currentManualZip ?? ''}'
                               : 'Using device location';
 
                       return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Location source'),
-                        subtitle: Text(subtitle),
-                        trailing: TextButton(
+                        contentPadding:
+                            EdgeInsets.zero,
+                        title: const Text(
+                            'Location source'),
+                        subtitle:
+                            Text(subtitle),
+                        trailing:
+                            TextButton(
                           onPressed: () =>
-                              _openLocationPicker(context),
-                          child: const Text('Change'),
+                              _openLocationPicker(
+                                  context),
+                          child:
+                              const Text('Change'),
                         ),
                       );
                     },
@@ -86,17 +121,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Distance units
+                  // ---------------- DISTANCE ----------------
                   Text(
                     'Distance units',
-                    style:
-                        Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium,
                   ),
                   const SizedBox(height: 8),
-                  ValueListenableBuilder<DistanceUnit>(
+                  ValueListenableBuilder<
+                      DistanceUnit>(
                     valueListenable:
-                        SettingsStore.distanceUnit,
-                    builder: (context, unit, _) {
+                        SettingsStore
+                            .distanceUnit,
+                    builder:
+                        (context, unit, _) {
                       return DropdownButtonFormField<
                           DistanceUnit>(
                         initialValue: unit,
@@ -108,20 +147,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         items: const [
                           DropdownMenuItem(
-                            value: DistanceUnit.km,
+                            value:
+                                DistanceUnit.km,
                             child: Text(
                                 'Kilometers (km)'),
                           ),
                           DropdownMenuItem(
-                            value: DistanceUnit.mi,
-                            child:
-                                Text('Miles (mi)'),
+                            value:
+                                DistanceUnit.mi,
+                            child: Text(
+                                'Miles (mi)'),
                           ),
                         ],
                         onChanged: (v) {
-                          if (v == null) return;
+                          if (v == null)
+                            return;
                           SettingsStore
-                              .setDistanceUnit(v);
+                              .setDistanceUnit(
+                                  v);
                         },
                       );
                     },
@@ -129,29 +172,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Feed
+                  // ---------------- FEED ----------------
                   Text(
                     'Feed',
-                    style:
-                        Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium,
                   ),
                   const SizedBox(height: 8),
-                  ValueListenableBuilder<bool>(
+                  ValueListenableBuilder<
+                      bool>(
                     valueListenable:
-                        SettingsStore.sortByDistance,
-                    builder: (context, enabled, _) {
+                        SettingsStore
+                            .sortByDistance,
+                    builder:
+                        (context, enabled, _) {
                       return SwitchListTile(
                         contentPadding:
                             EdgeInsets.zero,
                         title: const Text(
                             'Sort events by distance'),
-                        subtitle: const Text(
+                        subtitle:
+                            const Text(
                           'When location is available, closer events appear first.',
                         ),
                         value: enabled,
                         onChanged: (v) =>
                             SettingsStore
-                                .setSortByDistance(v),
+                                .setSortByDistance(
+                                    v),
                       );
                     },
                   ),
@@ -162,24 +211,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Divider(height: 1),
 
             Padding(
-              padding: const EdgeInsets.only(
-                  top: 12, bottom: 16),
+              padding:
+                  const EdgeInsets.only(
+                      top: 12,
+                      bottom: 16),
               child: ListTile(
                 dense: true,
                 contentPadding:
-                    const EdgeInsets.symmetric(
-                        horizontal: 16),
-                leading:
-                    const Icon(Icons.delete_outline),
-                title:
-                    const Text('Delete Account'),
+                    const EdgeInsets
+                        .symmetric(
+                            horizontal:
+                                16),
+                leading: const Icon(
+                    Icons.delete_outline),
+                title: const Text(
+                    'Delete Account'),
                 subtitle: const Text(
                   'Permanently remove your account and all data.',
                 ),
                 onTap: _loading
                     ? null
                     : () =>
-                        _startDeleteFlow(context),
+                        _startDeleteFlow(
+                            context),
               ),
             ),
           ],
@@ -188,27 +242,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ---------------- BLOCKED USERS ----------------
+
+  Future<void> _openBlockedUsers() async {
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor:
+          Colors.black.withOpacity(0.4),
+      pageBuilder:
+          (_, __, ___) =>
+              const BlockedUsersOverlay(),
+    );
+  }
+
   // ---------------- DELETE FLOW ----------------
 
   Future<void> _startDeleteFlow(
       BuildContext context) async {
-    final first = await showDialog<bool>(
+    final first =
+        await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete account'),
+      builder: (_) =>
+          AlertDialog(
+        title:
+            const Text('Delete account'),
         content: const Text(
           'Do you want to permanently delete your account?',
         ),
         actions: [
           TextButton(
             onPressed: () =>
-                Navigator.pop(context, false),
+                Navigator.pop(
+                    context, false),
             child: const Text('No'),
           ),
           TextButton(
             onPressed: () =>
-                Navigator.pop(context, true),
-            child: const Text('Yes'),
+                Navigator.pop(
+                    context, true),
+            child:
+                const Text('Yes'),
           ),
         ],
       ),
@@ -216,35 +291,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (first != true) return;
 
-    final controller = TextEditingController();
+    final controller =
+        TextEditingController();
 
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title:
-            const Text('Final confirmation'),
+      builder: (_) =>
+          AlertDialog(
+        title: const Text(
+            'Final confirmation'),
         content: Column(
           mainAxisSize:
               MainAxisSize.min,
           children: [
             const Text(
-              'Type DELETE to confirm.',
-            ),
-            const SizedBox(height: 12),
+                'Type DELETE to confirm.'),
+            const SizedBox(
+                height: 12),
             TextField(
-              controller: controller,
+              controller:
+                  controller,
               decoration:
                   const InputDecoration(
-                      hintText: 'DELETE'),
+                      hintText:
+                          'DELETE'),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () =>
-                Navigator.pop(context, false),
-            child:
-                const Text('Cancel'),
+                Navigator.pop(
+                    context, false),
+            child: const Text(
+                'Cancel'),
           ),
           TextButton(
             onPressed: () {
@@ -255,30 +336,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     context, true);
               }
             },
-            child:
-                const Text('Confirm'),
+            child: const Text(
+                'Confirm'),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
-      await _deleteAccount(context);
+      await _deleteAccount(
+          context);
     }
   }
 
   Future<void> _deleteAccount(
       BuildContext context) async {
-    setState(() => _loading = true);
+    setState(
+        () => _loading = true);
 
     try {
       final session =
-          Supabase.instance.client.auth.currentSession;
+          Supabase.instance.client
+              .auth.currentSession;
       if (session == null) {
-        throw Exception('AUTH_REQUIRED');
+        throw Exception(
+            'AUTH_REQUIRED');
       }
 
-      final response = await http.delete(
+      final response =
+          await http.delete(
         Uri.parse(
             '${ProfileService.backendBaseUrl}/me'),
         headers: {
@@ -287,35 +373,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       );
 
-      if (response.statusCode != 200) {
-        throw Exception(response.body);
+      if (response.statusCode !=
+          200) {
+        throw Exception(
+            response.body);
       }
 
-      await Supabase.instance.client.auth
+      await Supabase.instance.client
+          .auth
           .signOut();
 
       if (!mounted) return;
 
       Navigator.of(context)
-          .popUntil((route) =>
-              route.isFirst);
+          .popUntil(
+              (route) =>
+                  route.isFirst);
     } catch (_) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context)
           .showSnackBar(
         const SnackBar(
-          content:
-              Text('Failed to delete account'),
+          content: Text(
+              'Failed to delete account'),
         ),
       );
     } finally {
       if (mounted)
-        setState(() => _loading = false);
+        setState(() =>
+            _loading = false);
     }
   }
 
-  // ---------------- LOCATION HELPERS ----------------
+  // ---------------- LOCATION PICKERS ----------------
 
   void _openLocationPicker(
       BuildContext context) {
@@ -331,7 +422,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text(
                     'Use device location'),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(
+                      context);
                   if (SettingsStore
                       .hasLocation) {
                     SettingsStore
@@ -348,8 +440,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text(
                     'Enter ZIP manually'),
                 onTap: () {
-                  Navigator.pop(context);
-                  _openZipInput(context);
+                  Navigator.pop(
+                      context);
+                  _openZipInput(
+                      context);
                 },
               ),
             ],
@@ -369,10 +463,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       isScrollControlled: true,
       builder: (_) {
         return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context)
-                .viewInsets
-                .bottom,
+          padding:
+              EdgeInsets.only(
+            bottom:
+                MediaQuery.of(context)
+                    .viewInsets
+                    .bottom,
             left: 16,
             right: 16,
             top: 16,
@@ -383,26 +479,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               const Text(
                 'Enter ZIP code',
-                style:
-                    TextStyle(fontSize: 16),
+                style: TextStyle(
+                    fontSize: 16),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(
+                  height: 12),
               TextField(
-                controller: controller,
+                controller:
+                    controller,
                 keyboardType:
-                    TextInputType.number,
+                    TextInputType
+                        .number,
                 decoration:
                     const InputDecoration(
                         hintText:
                             'ZIP code'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(
+                  height: 12),
               ElevatedButton(
-                onPressed: () async {
+                onPressed:
+                    () async {
                   final zip =
                       controller.text
                           .trim();
-                  if (zip.isEmpty) return;
+                  if (zip.isEmpty)
+                    return;
 
                   final result =
                       await ZipGeocoding
@@ -412,7 +514,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _googleMapsApiKey,
                   );
 
-                  if (result == null) {
+                  if (result ==
+                      null) {
                     ScaffoldMessenger.of(
                             context)
                         .showSnackBar(
@@ -435,9 +538,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       context);
                 },
                 child:
-                    const Text('Save'),
+                    const Text(
+                        'Save'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(
+                  height: 12),
             ],
           ),
         );

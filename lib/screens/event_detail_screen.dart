@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -7,11 +7,18 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'profile_screen.dart';
 import '../models/event.dart';
 import '../services/event_service.dart';
-import 'attendees_screen.dart';
+import 'attendees_sheet.dart';
 import 'edit_event_screen.dart';
 import 'requests_screen.dart';
+import 'event_detail/widgets/event_action_bar.dart';
+import 'event_detail/widgets/event_players_preview_card.dart';
+import 'event_detail/widgets/event_requests_preview_card.dart';
+import 'event_detail/event_detail_controller.dart';
+import 'event_detail/widgets/event_map_preview.dart';
+import 'event_detail/widgets/event_info_section.dart';
 
 /// ✅ UI labels for format slugs.
 /// Keep in sync with public.formats.slug
@@ -42,9 +49,11 @@ class EventDetailScreen extends StatefulWidget {
 class _EventDetailScreenState extends State<EventDetailScreen> {
   final EventService _svc = EventService();
 
+  static const Color _untapPurple = Color(0xFF6E5AA7);
+
+  late EventDetailController _controller;
+
   late Event _event;
-  bool _busy = false;
-  String? _error;
   bool _changed = false;
 
   // Players preview (joined only)
@@ -56,84 +65,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _loadingRequests = false;
   int _requestsCount = 0;
 
-  // ─────────────────────────────────────────────────────────────
-  // Join/Cancel-request anti-spam cooldown (local UX guard)
-  // ─────────────────────────────────────────────────────────────
+  bool _inWatchlist = false;
 
-  DateTime? _joinCooldownUntil;
-
-  // NEW: Keep a stable total so we can show a subtle progress indicator
-  int _joinCooldownTotalSecs = 0;
-
-  // NEW: Tick UI while cooldown is active (previously it only refreshed start/end)
-  Timer? _joinCooldownTimer;
-
-  bool get _inJoinCooldown =>
-      _joinCooldownUntil != null &&
-      DateTime.now().isBefore(_joinCooldownUntil!);
-
-  int get _joinCooldownSecs {
-    if (!_inJoinCooldown) return 0;
-    return _joinCooldownUntil!.difference(DateTime.now()).inSeconds + 1;
-  }
-
-  void _startJoinCooldown([int seconds = 10]) {
-    // Make sure we never shrink an existing cooldown accidentally.
-    final now = DateTime.now();
-    final currentLeft = _inJoinCooldown ? _joinCooldownSecs : 0;
-    final target = seconds > currentLeft ? seconds : currentLeft;
-
-    _joinCooldownUntil = now.add(Duration(seconds: target));
-    _joinCooldownTotalSecs = target;
-
-    _joinCooldownTimer?.cancel();
-
-    if (mounted) setState(() {}); // refresca label/disabled
-
-    // Tick once per second to update button label + indicator
-    _joinCooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      if (!_inJoinCooldown) {
-        t.cancel();
-        setState(() {}); // final refresh
-        return;
-      }
-      setState(() {}); // keep countdown moving
-    });
-
-    // Keep the original delayed refresh too (no harm, no refactor)
-    Future.delayed(Duration(seconds: target + 1), () {
-      if (!mounted) return;
-      setState(() {}); // refresca al terminar
-    });
-  }
-
-  // NEW: Try to extract server cooldown seconds from error object.
-  // We keep regex fallback because humans love fragile string parsing.
-  int? _cooldownSecondsFromError(Object e) {
-    final raw = e.toString();
-
-    // supports "seconds=123"
-    final m1 = RegExp(r'seconds=(\d+)').firstMatch(raw);
-    // supports '"cooldown_seconds": 123' OR 'cooldown_seconds=123'
-    final m2 = RegExp(r'cooldown_seconds["=: ]+(\d+)').firstMatch(raw);
-
-    final match = m1 ?? m2;
-    if (match == null) return null;
-
-    final s = int.tryParse(match.group(1) ?? '');
-    if (s == null) return null;
-    if (s <= 0) return null;
-    return s;
-  }
 
   @override
   void initState() {
     super.initState();
     _event = widget.event;
+    _controller = EventDetailController(
+      event: _event,
+      svc: _svc,
+    );
     _loadAttendeesPreview();
     if (_isHost) {
       _loadRequestsPreview();
@@ -142,7 +84,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   @override
   void dispose() {
-    _joinCooldownTimer?.cancel();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -363,40 +305,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  String _humanizeError(Object e) {
-    final raw = e.toString();
-
-    if (raw.contains('KICK_COOLDOWN_ACTIVE') ||
-        raw.contains('JOIN_COOLDOWN_ACTIVE')) {
-      // supports "seconds=123"
-      final m1 = RegExp(r'seconds=(\d+)').firstMatch(raw);
-      // supports '"cooldown_seconds": 123' OR 'cooldown_seconds=123'
-      final m2 = RegExp(r'cooldown_seconds["=: ]+(\d+)').firstMatch(raw);
-
-      final match = m1 ?? m2;
-      if (match != null) {
-        final mins = (int.parse(match.group(1)!) / 60).ceil();
-        return 'You phased out. Try to rejoin in $mins minutes';
-      }
-      return 'You phased out. Try to rejoin later';
-    }
-
-    return raw.replaceFirst('Exception: ', '');
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // Maps
-  // ─────────────────────────────────────────────────────────────
-
-  Future<void> _openMaps(String query) async {
-    final q = Uri.encodeComponent(query);
-    final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$q');
-
-    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      _toastError('Could not open Maps');
-    }
-  }
-
   // ─────────────────────────────────────────────────────────────
   // Confirm dialog
   // ─────────────────────────────────────────────────────────────
@@ -427,94 +335,87 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Actions
-  // ─────────────────────────────────────────────────────────────
-
-  Future<void> _run(String label, Future<void> Function() action) async {
-    if (_busy) return;
-
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    // ✅ Local anti-spam cooldown for request loop
-    // Keep for Cancel request. For Join, prefer server cooldown if it triggers.
-    if (label == 'Cancel request') {
-      _startJoinCooldown(10);
-    }
-
-    if (label == 'Join') {
-      setState(() => _event = _event.copyWith(myStatus: 'pending'));
-    } else if (label == 'Leave' || label == 'Cancel request') {
-      setState(() => _event = _event.copyWith(myStatus: null));
-    }
-
-    try {
-      await action();
-      await _refreshEventByIdWithRetry();
-
-      _changed = true;
-      _toast('$label OK');
-
-      _loadAttendeesPreview();
-      if (_isHost) _loadRequestsPreview();
-    } catch (e) {
-      // NEW: if server says cooldown, start local cooldown with real seconds
-      if (label == 'Join' || label == 'Cancel request') {
-        final secs = _cooldownSecondsFromError(e);
-        if (secs != null) {
-          _startJoinCooldown(secs);
-        }
-      }
-
-      final msg = _humanizeError(e);
-      setState(() => _error = msg);
-      _toastError(msg);
-
-      try {
-        await _refreshEventById();
-        _loadAttendeesPreview();
-        if (_isHost) _loadRequestsPreview();
-      } catch (_) {}
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
   // Navigation
   // ─────────────────────────────────────────────────────────────
 
   Future<void> _openAttendees() async {
-    final changed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AttendeesScreen(eventId: _event.id),
-      ),
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black.withOpacity(0.4),
+        pageBuilder: (_, __, ___) {
+          return Material(
+            type: MaterialType.transparency,
+            child: Stack(
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: Container(
+                      color: Colors.black.withOpacity(0.2),
+                    ),
+                  ),
+                ),
+                AttendeesOverlay(eventId: _event.id),
+              ],
+            ),
+          );
+        },
+      transitionBuilder: (_, animation, __, child) {
+        return FadeTransition(
+          opacity: animation,
+          child: child,
+        );
+      },
     );
 
-    if (changed == true) {
-      _changed = true;
-      await _refreshEventById();
-      _loadAttendeesPreview();
-      if (_isHost) _loadRequestsPreview();
-    }
+    await _refreshEventById();
+    _loadAttendeesPreview();
+    if (_isHost) _loadRequestsPreview();
   }
 
   Future<void> _openRequests() async {
-    final changed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => RequestsScreen(eventId: _event.id),
-      ),
+    debugPrint('OPEN REQUESTS CALLED');
+    await Future.delayed(Duration.zero);
+
+    final changed = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      barrierColor: Colors.black.withOpacity(0.4),
+        pageBuilder: (_, __, ___) {
+          return Material(
+            type: MaterialType.transparency,
+            child: Stack(
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                    child: Container(
+                      color: Colors.black.withOpacity(0.2),
+                    ),
+                  ),
+                ),
+                RequestsOverlay(eventId: _event.id),
+              ],
+            ),
+          );
+
+      },
     );
+
     if (changed == true) {
       _changed = true;
       await _refreshEventById();
       _loadAttendeesPreview();
     }
-    if (_isHost) _loadRequestsPreview();
+
+    if (_isHost) {
+      _loadRequestsPreview();
+    }
   }
 
   // ✅ CHANGE: EditEvent now returns Event? (not bool)
@@ -548,346 +449,39 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   // ─────────────────────────────────────────────────────────────
   // UI helpers
   // ─────────────────────────────────────────────────────────────
-
-  Widget _infoRow({
-    required IconData icon,
-    required String title,
-    required String value,
-    VoidCallback? onTap,
-  }) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      dense: true,
-      leading: Icon(icon),
-      title: Text(title),
-      subtitle: Text(value),
-      trailing: onTap == null ? null : const Icon(Icons.open_in_new, size: 18),
-      onTap: onTap,
-    );
+ 
+  String _formatDate(DateTime? dt) {
+    if (dt == null) return '';
+    return '${dt.day}/${dt.month}/${dt.year} '
+         '${dt.hour.toString().padLeft(2, '0')}:'
+         '${dt.minute.toString().padLeft(2, '0')}';
   }
 
-  Widget _summaryCard() {
-    final hostName =
-        _event.hostNickname.trim().isEmpty ? 'Unknown' : _event.hostNickname;
-    final addr = (_event.addressText ?? '').trim();
-
-    final proxiesLabel = _proxiesLabel();
-
-    // ✅ Format: use ONLY formatSlug (backend truth)
-    final slug = (_event.formatSlug ?? '').trim().toLowerCase();
-    final fmtLabel = slug.isEmpty ? null : (kFormatLabels[slug] ?? slug);
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          children: [
-            _infoRow(
-              icon: Icons.flag_outlined,
-              title: 'Status',
-              value: _event.status,
-            ),
-            _infoRow(icon: Icons.person_outline, title: 'Host', value: hostName),
-            _infoRow(
-              icon: Icons.schedule,
-              title: 'Starts',
-              value: _event.startsLabel(),
-            ),
-            _infoRow(
-              icon: Icons.style_outlined,
-              title: 'Format',
-              value: fmtLabel ?? 'Other',
-            ),
-            if (proxiesLabel != null)
-              _infoRow(
-                icon: Icons.copy_all_outlined,
-                title: 'Proxies',
-                value: proxiesLabel,
-              ),
-            if ((_event.powerLevel ?? '').trim().isNotEmpty)
-              _infoRow(
-                icon: Icons.bolt,
-                title: 'Power level',
-                value: _event.powerLevel!.trim(),
-              ),
-            if (addr.isNotEmpty)
-              _infoRow(
-                icon: Icons.place_outlined,
-                title: 'Location',
-                value: addr,
-                onTap: () => _openMaps(addr),
-              ),
-            if ((_event.hostNotes ?? '').trim().isNotEmpty) ...[
-              const Divider(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Host notes',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(_event.hostNotes!),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _playersPreviewCard() {
-    final countLabel = '${_event.attendeesCount}/${_event.maxPlayers}';
-    final showNames = _attendeesPreview.isNotEmpty;
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text('Players', style: Theme.of(context).textTheme.titleSmall),
-                const Spacer(),
-                Text(countLabel, style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: _openAttendees,
-                  child: const Text('See all'),
-                ),
-              ],
-            ),
-            if (_loadingAttendees) ...[
-              const SizedBox(height: 6),
-              const LinearProgressIndicator(minHeight: 2),
-            ] else if (showNames) ...[
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _attendeesPreview.map((a) {
-                  final name = _displayName(a);
-                  final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircleAvatar(radius: 12, child: Text(initials)),
-                      const SizedBox(width: 6),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 160),
-                        child: Text(name, overflow: TextOverflow.ellipsis),
-                      ),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _requestsPreviewCard() {
-    if (!_isHost) return const SizedBox.shrink();
-
-    final showNames = _requestsPreview.isNotEmpty;
-    final label = _loadingRequests ? '…' : '$_requestsCount';
-
-    return Card(
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text('Requests', style: Theme.of(context).textTheme.titleSmall),
-                const Spacer(),
-                Text(label, style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: _openRequests,
-                  child: const Text('See all'),
-                ),
-              ],
-            ),
-            if (_loadingRequests) ...[
-              const SizedBox(height: 6),
-              const LinearProgressIndicator(minHeight: 2),
-            ] else if (!showNames) ...[
-              const SizedBox(height: 6),
-              Text('No requests', style: Theme.of(context).textTheme.bodySmall),
-            ] else ...[
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _requestsPreview.map((a) {
-                  final name = _displayName(a);
-                  final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircleAvatar(radius: 12, child: Text(initials)),
-                      const SizedBox(width: 6),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 160),
-                        child: Text(name, overflow: TextOverflow.ellipsis),
-                      ),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _bottomActionBar() {
-    String headline;
-    if (_isHost) {
-      headline = "You're hosting";
-    } else if (_isJoined) {
-      headline = "You're in";
-    } else if (_isRequested) {
-      headline = "Request pending";
-    } else if (_isEventFull) {
-      headline = "Event is full";
-    } else {
-      headline = "Slots available";
+  String _formatBackgroundAsset() {
+    switch (_event.formatSlug) {
+      case 'commander':
+        return 'assets/covers/commander.png';
+      case 'modern':
+        return 'assets/covers/modern.png';
+      case 'legacy':
+        return 'assets/covers/legacy.png';
+      case 'pioneer':
+        return 'assets/covers/pioneer.png';
+      case 'standard':
+        return 'assets/covers/standard.png';
+      case 'vintage':
+        return 'assets/covers/vintage.png';
+      case 'draft':
+        return 'assets/covers/draft.png';
+      case 'cube':
+        return 'assets/covers/cube.png';
+      case 'premodern':
+        return 'assets/covers/premodern.png';
+      case 'sealed':
+        return 'assets/covers/sealed.png';
+      default:
+        return 'assets/covers/other.png';
     }
-
-    String primaryLabel;
-    VoidCallback? primaryOnPressed;
-
-    String? secondaryLabel;
-    VoidCallback? secondaryOnPressed;
-
-    if (_isJoined) {
-      primaryLabel = 'Leave';
-      primaryOnPressed = _busy || !_canLeave
-          ? null
-          : () => _run('Leave', () async {
-                await _svc.leaveEvent(_event.id);
-              });
-    } else if (_isRequested) {
-      primaryLabel = _inJoinCooldown
-          ? 'Cancel request (${_joinCooldownSecs}s)'
-          : 'Cancel request';
-      primaryOnPressed =
-          _busy || _inJoinCooldown || !_canCancelRequest ? null : () => _run(
-                'Cancel request',
-                () async {
-                  await _svc.leaveEvent(_event.id);
-                },
-              );
-    } else if (_isEventFull) {
-      primaryLabel = 'No slots available';
-      primaryOnPressed = null;
-    } else {
-      primaryLabel = _inJoinCooldown ? 'Join (${_joinCooldownSecs}s)' : 'Join';
-      primaryOnPressed = _busy || _inJoinCooldown || !_canJoin
-          ? null
-          : () => _run('Join', () async {
-                await _svc.joinEvent(_event.id);
-              });
-    }
-
-    if (_canCancelEvent) {
-      secondaryLabel = 'Cancel event';
-      secondaryOnPressed = _busy
-          ? null
-          : () async {
-              final ok = await _confirm(
-                title: 'Cancel event?',
-                message:
-                    'This will cancel the event for everyone. This can’t be undone.',
-                confirmText: 'Cancel',
-              );
-              if (!ok) return;
-              await _run('Cancel', () async {
-                await _svc.cancelEvent(_event.id);
-              });
-            };
-    }
-
-    // NEW: subtle cooldown indicator (thin, low-noise)
-    final showCooldownIndicator = _inJoinCooldown && _joinCooldownTotalSecs > 0;
-    final progress = showCooldownIndicator
-        ? (_joinCooldownSecs / _joinCooldownTotalSecs).clamp(0.0, 1.0)
-        : 0.0;
-
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-        child: Card(
-          elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  headline,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    _error!,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Theme.of(context).colorScheme.error),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: primaryOnPressed,
-                        child: Text(primaryLabel),
-                      ),
-                    ),
-                    if (secondaryLabel != null) ...[
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: secondaryOnPressed,
-                          child: Text(secondaryLabel),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                if (showCooldownIndicator) ...[
-                  const SizedBox(height: 10),
-                  LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 3,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -895,59 +489,417 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(_event.title),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.pop(context, _changed),
-          ),
-          actions: [
-            if (_canEditEvent)
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: _busy ? null : _openEditEvent,
+       body: CustomScrollView(
+        slivers: [
+
+          /// ─────────────────────────────────────────────
+          /// HERO
+          /// ─────────────────────────────────────────────
+
+          SliverAppBar(
+            pinned: true,
+            expandedHeight: 200,
+            collapsedHeight: kToolbarHeight,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
+            automaticallyImplyLeading: false,
+            leadingWidth: 72,
+
+            leading: Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: UntapCircleButton(
+                  icon: Icons.arrow_back_outlined,
+                  onTap: () => Navigator.pop(context, _changed),
+                ),
               ),
-            IconButton(
-              icon: const Icon(Icons.share),
-              onPressed: () {
-                const playStoreUrl =
-                  'https://play.google.com/store/apps/details?id=com.untapgo.app';
-
-                final address = (_event.addressText ?? '').trim();
-
-                final text = StringBuffer()
-                  ..writeln('Join my game on UntapGo!')
-                  ..writeln()
-                  ..writeln(_event.title)
-                  ..writeln('Host: ${_event.hostNickname}');
-
-                if (address.isNotEmpty) {
-                  text.writeln(address);
-                }
-
-                text
-                  ..writeln()
-                  ..writeln('Get the app:')
-                  ..writeln(playStoreUrl);
-
-                Share.share(text.toString().trim());
-              },
             ),
-          ],
-        ),
-        bottomNavigationBar: _bottomActionBar(),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _summaryCard(),
-            const SizedBox(height: 12),
-            _playersPreviewCard(),
-            const SizedBox(height: 12),
-            _requestsPreviewCard(),
-            const SizedBox(height: 80),
-          ],
+
+            actions: [
+              UntapCircleButton(
+                icon: Icons.visibility_outlined,
+                active: _inWatchlist,
+                onTap: () {
+                  setState(() {
+                    _inWatchlist = !_inWatchlist;
+                  });
+                },
+              ),
+              UntapCircleButton(
+                icon: Icons.share,
+                onTap: () {
+                  const playStoreUrl = 'https://untapgo.com';
+                  final address = (_event.addressText ?? '').trim();
+
+                  final text = StringBuffer()
+                    ..writeln('Join my game on UntapGo!')
+                    ..writeln()
+                    ..writeln(_event.title)
+                    ..writeln('Host: ${_event.hostNickname}');
+
+                  if (address.isNotEmpty) {
+                    text.writeln(address);
+                  }
+
+                  text
+                    ..writeln()
+                    ..writeln('Get the app:')
+                    ..writeln(playStoreUrl);
+
+                  Share.share(text.toString().trim());
+                },
+              ),
+              if (_canEditEvent)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: UntapCircleButton(
+                    icon: Icons.edit,
+                    onTap: _openEditEvent,
+                  ),
+                ),
+            ],
+
+            flexibleSpace: FlexibleSpaceBar(
+              collapseMode: CollapseMode.parallax,
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(
+                    _formatBackgroundAsset(),
+                    fit: BoxFit.cover,
+                  ),
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: [0.35, 1.0],
+                        colors: [
+                          Colors.transparent,
+                          Color(0x4D000000),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Text(
+                        _event.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          /// ─────────────────────────────────────────────
+          /// COUNTDOWN BANNER (FIJA)
+          /// ─────────────────────────────────────────────
+
+          if (_event.startsAt != null && !_isEnded)
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _CountdownHeaderDelegate(
+                startsAt: _event.startsAt!,
+              ),
+            ),
+
+          /// ─────────────────────────────────────────────
+          /// CONTENT
+          /// ─────────────────────────────────────────────
+
+          SliverToBoxAdapter(
+            child: Transform.translate(
+              offset: const Offset(0, -32),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 32, 16, 0),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.background,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(32),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+
+                    EventInfoSection(
+                      event: _event,
+                      formatDate: _formatDate,
+                      proxiesLabel: _proxiesLabel,
+                      formatLabels: kFormatLabels,
+                      onHostTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ProfileScreen(
+                              userId: _event.hostUserId,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    EventPlayersPreviewCard(
+                      attendeesCount: _event.attendeesCount,
+                      maxPlayers: _event.maxPlayers,
+                      attendeesPreview: _attendeesPreview,
+                      loading: _loadingAttendees,
+                      onSeeAll: _openAttendees,
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    EventRequestsPreviewCard(
+                      isHost: _isHost,
+                      requestsCount: _requestsCount,
+                      requestsPreview: _requestsPreview,
+                      loading: _loadingRequests,
+                      onSeeAll: _openRequests,
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    EventActionBar(
+                      event: _event,
+                      isHost: _isHost,
+                      isJoined: _isJoined,
+                      isRequested: _isRequested,
+                      isEventFull: _isEventFull,
+                      canLeave: _canLeave,
+                      canJoin: _canJoin,
+                      canCancelRequest: _canCancelRequest,
+                      canCancelEvent: _canCancelEvent,
+                      busy: _controller.busy,
+                      inJoinCooldown: _controller.inJoinCooldown,
+                      joinCooldownSecs: _controller.joinCooldownSecs,
+                      joinCooldownTotalSecs:
+                          _controller.joinCooldownTotalSecs,
+                      error: _controller.error,
+                      onJoin: () async {
+                        try {
+                          await _controller.join();
+                          setState(() {});
+                        } catch (_) {
+                          setState(() {});
+                        }
+                      },
+                      onLeave: () async {
+                        try {
+                          await _controller.leave();
+                          setState(() {});
+                        } catch (_) {
+                          setState(() {});
+                        }
+                      },
+                      onCancelRequest: () async {
+                        try {
+                          await _controller.leave();
+                          setState(() {});
+                        } catch (_) {
+                          setState(() {});
+                        }
+                      },
+                      onCancelEvent: () async {
+                        final ok = await _confirm(
+                          title: 'Cancel event?',
+                          message:
+                              'This will cancel the event for everyone. This can’t be undone.',
+                          confirmText: 'Cancel',
+                        );
+                        if (!ok) return;
+
+                        try {
+                          await _controller.cancelEvent();
+                          setState(() {});
+                        } catch (_) {
+                          setState(() {});
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+  class UntapCircleButton extends StatefulWidget {
+    final IconData icon;
+    final VoidCallback onTap;
+    final bool active;
+
+    const UntapCircleButton({
+      super.key,
+      required this.icon,
+      required this.onTap,
+      this.active = false,
+    });
+
+    @override
+    State<UntapCircleButton> createState() => _UntapCircleButtonState();
+  }
+
+class _UntapCircleButtonState extends State<UntapCircleButton>
+    with SingleTickerProviderStateMixin {
+
+  static const Color _untapPurple = Color(0xFF6E5AA7);
+
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+    );
+
+    _animation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: 0.92),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 0.92, end: 1.05),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 1.05, end: 1.0),
+        weight: 30,
+      ),
+    ]).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    _controller.forward(from: 0);
+    widget.onTap();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: GestureDetector(
+        onTap: _handleTap,
+        child: AnimatedBuilder(
+          animation: _animation,
+          builder: (_, child) {
+            return Transform.scale(
+              scale: _animation.value,
+              child: child,
+            );
+          },
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: widget.active ? _untapPurple : Colors.white,
+              border: Border.all(
+                color: _untapPurple,
+                width: 1.5,
+              ),
+            ),
+            child: Icon(
+              widget.icon,
+              size: 22,
+              color: widget.active ? Colors.white : _untapPurple,
+            ),
+          ),
         ),
       ),
     );
+  }
+}
+class _CountdownHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final DateTime startsAt;
+
+  _CountdownHeaderDelegate({
+    required this.startsAt,
+  });
+
+  @override
+  Widget build(
+      BuildContext context,
+      double shrinkOffset,
+      bool overlapsContent,
+      ) {
+    final now = DateTime.now();
+    final diff = startsAt.toLocal().difference(now);
+
+    // Mostrar solo si empieza en menos de 2h y aún no ha empezado
+    if (diff <= Duration.zero || diff > const Duration(hours: 2)) {
+      return Container(
+        color: Colors.transparent,
+      );
+    }
+
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes.remainder(60);
+
+    final label = hours > 0
+        ? 'Starting in ${hours}h ${minutes}m'
+        : 'Starting in ${minutes}m';
+
+    return Container(
+      color: const Color(0xFF6E5AA7),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+          letterSpacing: 0.2,
+          color: Color.fromARGB(255, 245, 245, 245),
+        ),
+      ),
+    );
+  }
+
+  @override
+  double get maxExtent => 44;
+
+  @override
+  double get minExtent => 44;
+
+  @override
+  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) {
+    return true;
   }
 }
