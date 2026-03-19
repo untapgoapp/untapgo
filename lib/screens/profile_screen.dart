@@ -72,7 +72,8 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with SingleTickerProviderStateMixin {
   Future<PublicProfile>? _future;
   Future<List<_PublicDeck>>? _decksFuture;
 
@@ -91,6 +92,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _blockedByMe = false;
   bool _blockLoading = false;
 
+  late final AnimationController _heartController;
+  late final Animation<double> _heartScale;
+  late final Animation<double> _heartRotation;
+
   @override
   void initState() {
     super.initState();
@@ -98,6 +103,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _decksFuture = _fetchDecks();
     _loadFavoriteStatus();
     _loadBlockStatus();
+    _heartController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+
+    _heartScale = Tween<double>(begin: 1, end: 1.3).animate(
+      CurvedAnimation(
+        parent: _heartController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+
+    _heartRotation = Tween<double>(begin: 0, end: 0.2).animate(
+      CurvedAnimation(
+        parent: _heartController,
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _heartController.dispose();
+    super.dispose();
   }
 
   Map<String, String> _headers() {
@@ -279,8 +308,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: Container(
-        width: 90,
-        height: 70,
+        width: 72,
+        height: 56,
         color: Colors.grey.shade200,
         child: Image.network(url, fit: BoxFit.cover),
       ),
@@ -412,80 +441,157 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         return false;
       },
-      child: ExpansionTile(
-        tilePadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        childrenPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        title: Row(
-          children: [
-            _deckImage(d, name),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Theme(
+          data: Theme.of(context).copyWith(
+            dividerColor: Colors.transparent,
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+          ),
+          child: ExpansionTile(
+            shape: const Border(),
+            collapsedShape: const Border(),
+          tilePadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          childrenPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
 
-                  if ((d.formatSlug ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 2),
+          title: Row(
+            children: [
+              _deckImage(d, name),
+              const SizedBox(width: 14), // 👈 micro-fix que mejora todo
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      d.formatSlug![0].toUpperCase() +
-                        d.formatSlug!.substring(1),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                       ),
                     ),
-                  ],
 
-                  const SizedBox(height: 4),
-                  _deckColors(d),
-                ],
+                    if ((d.formatSlug ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        d.formatSlug![0].toUpperCase() +
+                            d.formatSlug!.substring(1),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 4),
+                    _deckColors(d),
+                  ],
+                ),
               ),
+            ],
+          ),
+
+          children: [
+            if ((d.deckUrl ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GestureDetector(
+                  onTap: () => _openDeckUrl(d.deckUrl!),
+                  child: Text(
+                    'Open deck link',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+
+            if ((d.exportText ?? '').isNotEmpty)
+            Builder(
+              builder: (_) {
+                final raw = d.exportText!;
+
+                final parts = raw.split('Sideboard');
+
+                final mainDeck = parts[0]
+                  .replaceFirst('Deck', '')
+                  .trim();
+                final sideboard =
+                    parts.length > 1 ? parts[1].trim() : null;
+
+                return Container(
+                  margin: const EdgeInsets.only(top: 6),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 🔹 Deck title
+                      const Text(
+                        'Deck',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          color: Colors.black38,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      SelectableText(
+                        mainDeck,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          height: 1.45,
+                          color: Colors.black87,
+                        ),
+                      ),
+
+                      if (sideboard != null) ...[
+                        const SizedBox(height: 14),
+
+                        const Text(
+                          'Sideboard',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            color: Colors.black38,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        SelectableText(
+                          sideboard,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.45,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
             ),
           ],
         ),
-        children: [
-          if ((d.deckUrl ?? '').isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: GestureDetector(
-                onTap: () => _openDeckUrl(d.deckUrl!),
-                child: Text(
-                  'Open deck link',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-          if ((d.exportText ?? '').isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SelectableText(
-                d.exportText!,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                ),
-              ),
-            ),
-        ],
+      ),
       ),
     );
   }
@@ -510,33 +616,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 8),
+
+            // 🔹 Header
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Text(
                     'Decks',
                     style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                    ),
                   ),
+
                   const Spacer(),
+
                   if (_isMe)
-                    SizedBox(
-                      height: 24,
-                      width: 24,
+                    Container(
+                      height: 30,
+                      width: 30,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF6E5AA7),
+                        shape: BoxShape.circle,
+                      ),
                       child: IconButton(
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.add, size: 20),
+                        icon: const Icon(
+                          Icons.add,
+                          size: 18,
+                          color: Colors.white,
+                        ),
                         onPressed: () async {
-                          final changed =
-                              await Navigator.push<bool>(
+                          final changed = await Navigator.push<bool>(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  const EditDeckScreen(),
+                              builder: (_) => const EditDeckScreen(),
                             ),
                           );
 
@@ -547,84 +665,137 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 6),
+
+            const SizedBox(height: 14), // 👈 más aire real
+
             if (decks.isEmpty)
               const Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                child: Text('No decks yet.'),
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'No decks yet.',
+                  style: TextStyle(color: Colors.black54),
+                ),
               )
             else
-              ...decks.map(_deckTile).toList(),
+              ...decks.map((d) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: _deckTile(d),
+                  )),
           ],
         );
       },
     );
   }
 
-  Widget _avatar(ImageProvider? avatar) {
-    final r = BorderRadius.circular(24);
-    return ClipRRect(
-      borderRadius: r,
-      child: Container(
-        width: 88,
-        height: 88,
-        color: Colors.grey.shade200,
+  Widget _avatarLarge(ImageProvider? avatar) {
+    return Container(
+      width: 132,
+      height: 132,
+      child: ClipOval(
         child: avatar != null
             ? Image(image: avatar, fit: BoxFit.cover)
-            : const Icon(Icons.person, size: 42),
+            : const Icon(Icons.person, size: 60),
       ),
+    );
+  }
+
+  Widget _profileHeader(PublicProfile p, ImageProvider? avatar) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        children: [
+          // Avatar con halo sutil
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF6E5AA7).withOpacity(0.15),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: _avatarLarge(avatar),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Nickname con accent
+          Text(
+            p.nickname.isNotEmpty ? p.nickname : 'Player',
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6E5AA7), // 👈 clave
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          if ((p.mtgArenaUsername ?? '').isNotEmpty)
+            Text(
+              'Arena · ${p.mtgArenaUsername}',
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.black54,
+              ),
+            ),
+
+          if ((p.bio ?? '').isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              p.bio!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                height: 1.4,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _statBoxMinimal('Hosted', p.hostedCount ?? 0),
+              const SizedBox(width: 40),
+              _statBoxMinimal('Played', p.playedCount ?? 0),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statBoxMinimal(String label, int value) {
+    return Column(
+      children: [
+        Text(
+          value.toString(),
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.black45,
+          ),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        actions: [
-          if (!_isMe) // no permitir favorite a uno mismo
-            IconButton(
-              icon: Icon(
-                _isFavorite
-                    ? Icons.favorite
-                    : Icons.favorite_border,
-                color: _isFavorite ? Colors.red : null,
-              ),
-              onPressed: _favoriteLoading
-                  ? null
-                  : () async {
-                      setState(() {
-                        _favoriteLoading = true;
-                      });
-
-                      try {
-                        final service = ProfileService();
-
-                        if (_isFavorite) {
-                          await service.unfavorite(widget.userId);
-                        } else {
-                          await service.favorite(widget.userId);
-                        }
-
-                        if (!mounted) return;
-
-                        setState(() {
-                          _isFavorite = !_isFavorite;
-                        });
-                      } catch (_) {
-                        // opcional: snackbar
-                      } finally {
-                        if (mounted) {
-                          setState(() {
-                            _favoriteLoading = false;
-                          });
-                        }
-                      }
-                    },
-            ),
-        ],
-      ),
+      backgroundColor: const Color(0xFFFBF7F1),
+      appBar: null,
       body: RefreshIndicator(
         onRefresh: _reload,
         child: FutureBuilder<PublicProfile>(
@@ -645,112 +816,129 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? NetworkImage(p.avatarUrl!)
                 : null;
 
-            return ListView(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 20),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16),
-                  child: Row(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      _avatar(avatar),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    p.nickname.isNotEmpty
-                                        ? p.nickname
-                                        : 'Player',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(
-                                            fontWeight:
-                                                FontWeight.w700),
-                                  ),
-                                ),
-                                if (_isMe)
-                                  GestureDetector(
-                                    onTap: () =>
-                                        _openEdit(p),
-                                    child: Text(
-                                      'Edit',
-                                      style: TextStyle(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        fontWeight:
-                                            FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
+           return Container(
+            color: const Color(0xFFFBF7F1),
+            child: CustomScrollView(
+              slivers: [
 
-                            // 🔹 Badge (si tiene)
-                            if (p.badges.isNotEmpty) ...[
-                              Wrap(
-                                spacing: 6,
-                                children: p.badges.map((badge) {
-                                  return BadgeWidget(
-                                    icon: badge.icon,
-                                    size: 18
-                                    );
-                                  }).toList(),
-                                ),
-                                const SizedBox(height: 8),
-                              ],
-
-                              // 🔹 Arena tag
-                              if ((p.mtgArenaUsername ?? '').isNotEmpty)
-                                Text(
-                                  'Arena · ${p.mtgArenaUsername}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFFDB5C42),
-                                  )
-                                ),
-
-                              // 🔹 Bio
-                              if ((p.bio ?? '').isNotEmpty) ...[
-                                const SizedBox(height: 5),
-                                Text(
-                                  p.bio!,
-                                  style: const TextStyle(height: 1.3),
-                                ),
-                              ],
-                          ],
+              // 🔹 Barra superior custom (sin AppBar)
+              SliverToBoxAdapter(
+                child: SafeArea(
+                  top: true,
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.pop(context),
                         ),
-                      ),
-                    ],
+
+                        const Spacer(),
+
+                        if (_isMe)
+                          GestureDetector(
+                            onTap: () => _openEdit(p),
+                            child: const Padding(
+                              padding: EdgeInsets.only(right: 8),
+                              child: Text(
+                                'Edit',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF6E5AA7),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                        if (!_isMe)
+                          AnimatedBuilder(
+                            animation: _heartController,
+                            builder: (context, child) {
+                              return Transform.rotate(
+                                angle: _heartRotation.value,
+                                child: Transform.scale(
+                                  scale: _heartScale.value,
+                                  child: IconButton(
+                                    icon: Icon(
+                                      _isFavorite
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      color: _isFavorite
+                                          ? const Color(0xFF6E5AA7)
+                                          : Colors.grey.shade600,
+                                    ),
+                                    onPressed: _favoriteLoading
+                                        ? null
+                                        : () async {
+                                            setState(() {
+                                              _isFavorite = !_isFavorite;
+                                            });
+
+                                            _heartController.forward().then(
+                                              (_) => _heartController.reverse(),
+                                            );
+
+                                            final service = ProfileService();
+
+                                            if (_isFavorite) {
+                                              await service.favorite(widget.userId);
+                                            } else {
+                                              await service.unfavorite(widget.userId);
+                                            }
+                                          },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 28),
-                _decksSection(),
+              ),
 
-                if (!_isMe) ...[
-                  const SizedBox(height: 32),
-                  const Divider(),
+            // 🔹 Header
+              SliverToBoxAdapter(
+                child: _profileHeader(p, avatar),
+              ),
 
-                  ListTile(
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 24),
+              ),
+
+              // 🔹 Decks
+              SliverToBoxAdapter(
+                child: _decksSection(),
+              ),
+
+              if (!_isMe) ...[
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 32),
+                ),
+
+                
+                  const Divider(
+                    height: 1,
+                    thickness: 0.5,
+                    color: Colors.black12,
+                  ),
+
+                SliverToBoxAdapter(
+                  child: ListTile(
+                    tileColor: Colors.transparent,
                     leading: const Icon(Icons.flag_outlined),
                     title: const Text('Report user'),
                     onTap: _openReportSheet,
                   ),
+                ),
 
-                  if (!_blockedByMe)
-                    ListTile(
+                if (!_blockedByMe)
+                  SliverToBoxAdapter(
+                    child: ListTile(
+                      tileColor: Colors.transparent,
                       leading: const Icon(Icons.block, color: Colors.red),
                       title: const Text(
                         'Block user',
@@ -758,22 +946,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       onTap: _blockLoading ? null : _confirmBlock,
                     ),
+                  ),
 
-                  if (_blockedByMe)
-                    ListTile(
+                if (_blockedByMe)
+                  SliverToBoxAdapter(
+                    child: ListTile(
+                      tileColor: Colors.transparent,
                       leading: const Icon(Icons.lock_open),
                       title: const Text('Unblock user'),
                       onTap: _blockLoading ? null : _unblock,
                     ),
+                  ),
                 ],
-              ],
-            );
+              ]
+            ),
+           );
           },
         ),
       ),
     );
   }
-
   Future<void> _openEdit(PublicProfile p) async {
     final changed = await Navigator.push<bool>(
       context,
@@ -790,8 +982,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (changed == true) await _reload();
   }
-
-
   Future<void> _openReportSheet() async {
     final controller = TextEditingController();
     String selectedReason = 'Inappropriate behavior';
@@ -862,29 +1052,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (confirmed == true) {
-      try {
-        await ProfileService().reportUser(
-          profileId: widget.userId,
-          reason: selectedReason,
-          details: controller.text,
-        );
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Report submitted'),
-          ),
-        );
-      } catch (_) {
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to submit report'),
-          ),
-        );
-      } 
+      await ProfileService().reportUser(
+        profileId: widget.userId,
+        reason: selectedReason,
+        details: controller.text,
+      );
     }
   }
 }

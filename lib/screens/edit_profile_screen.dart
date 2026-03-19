@@ -36,8 +36,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _uploadingAvatar = false;
   String? _error;
 
-  String? _avatarUrl; // current (url) avatar
-  File? _pendingAvatarFile; // selected image waiting to upload
+  String? _avatarUrl;
+  File? _pendingAvatarFile;
 
   @override
   void initState() {
@@ -117,10 +117,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     minScale: 1,
                     maxScale: 4,
                     child: Center(
-                      child: Image(
-                        image: img,
-                        fit: BoxFit.contain,
-                      ),
+                      child: Image(image: img, fit: BoxFit.contain),
                     ),
                   ),
                 ),
@@ -146,26 +143,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final userId = user.id;
 
-    final lower = file.path.toLowerCase();
-    final isPng = lower.endsWith('.png');
-    final ext = isPng ? 'png' : 'jpg';
-    final contentType = isPng ? 'image/png' : 'image/jpeg';
+    final ext = file.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    final contentType = ext == 'png' ? 'image/png' : 'image/jpeg';
 
     final path = '$userId/avatar.$ext';
 
     await Supabase.instance.client.storage.from('avatars').upload(
           path,
           file,
-          fileOptions: FileOptions(
-            upsert: true,
-            contentType: contentType,
-          ),
+          fileOptions: FileOptions(upsert: true, contentType: contentType),
         );
 
     final url =
         Supabase.instance.client.storage.from('avatars').getPublicUrl(path);
 
-    // Cache-bust para evitar ver el avatar viejo
     return '$url?v=${DateTime.now().millisecondsSinceEpoch}';
   }
 
@@ -184,7 +175,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       String? avatarUrlToSave = _avatarUrl;
 
-      // 1) Upload avatar if user selected a new file
       if (_pendingAvatarFile != null) {
         setState(() => _uploadingAvatar = true);
         try {
@@ -197,7 +187,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       final arena = _mtgArenaUsername.text.trim();
 
-      // 2) Save profile (backend)
       await widget.service.updateMyProfile(
         nickname: nick,
         avatarUrl: avatarUrlToSave,
@@ -217,7 +206,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget _avatarSquircle(ImageProvider? avatarImage) {
     const double size = 112;
-    final r = BorderRadius.circular(size * 0.28); // same “squircle” rule as Profile
+    final r = BorderRadius.circular(size * 0.28);
 
     return InkWell(
       borderRadius: r,
@@ -235,16 +224,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   : const Center(child: Icon(Icons.person, size: 52)),
             ),
           ),
-
-          // Upload overlay (squircle too)
           if (_uploadingAvatar)
             Positioned.fill(
               child: ClipRRect(
                 borderRadius: r,
                 child: const DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black38,
-                  ),
+                  decoration: BoxDecoration(color: Colors.black38),
                   child: Center(
                     child: SizedBox(
                       height: 18,
@@ -253,22 +238,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                 ),
-              ),
-            ),
-
-          // Zoom icon
-          if (avatarImage != null && !_uploadingAvatar)
-            Positioned(
-              bottom: 6,
-              right: 6,
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.zoom_in, size: 18, color: Colors.white),
               ),
             ),
         ],
@@ -281,86 +250,92 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final avatarImage = _avatarImage;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFFBF7F1),
       appBar: AppBar(
-        title: const Text('Edit profile'),
+        elevation: 0,
+        backgroundColor: const Color(0xFFFBF7F1),
+        foregroundColor: Colors.black,
+        title: const SizedBox.shrink(),
         actions: [
           TextButton(
             onPressed: _busy ? null : _save,
             child: _busy
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text(
-                    'Save',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text(
+                  'Save',
+                  style: TextStyle(
+                    fontSize: 17, // 👈 clave
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6E5AA7),
                   ),
-          ),
+                ),
+          )
         ],
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
-            Center(child: _avatarSquircle(avatarImage)),
 
-            const SizedBox(height: 12),
+            Center(child: _avatarSquircle(avatarImage)),
+            const SizedBox(height: 16),
 
             Center(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _pickAvatar,
-                icon: const Icon(Icons.photo_library_outlined),
-                label: Text(_picking ? 'Opening…' : 'Choose photo'),
+              child: GestureDetector(
+                onTap: _busy ? null : _pickAvatar,
+                child: Text(
+                  _picking ? 'Opening…' : 'Choose photo',
+                  style: const TextStyle(
+                    color: Color(0xFF6E5AA7),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ),
 
-            if (_pendingAvatarFile != null) ...[
-              const SizedBox(height: 6),
-              const Center(
-                child: Text(
-                  'New photo selected (uploads on Save)',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ],
+            const SizedBox(height: 32),
 
-            const SizedBox(height: 20),
-
+            // Nickname
             TextField(
               controller: _nickname,
               decoration: const InputDecoration(
                 labelText: 'Nickname',
-                border: OutlineInputBorder(),
+                border: InputBorder.none,
               ),
             ),
-            const SizedBox(height: 12),
+            const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+            const SizedBox(height: 16),
 
+            // Bio
             TextField(
               controller: _bio,
-              maxLines: 4,
+              minLines: 3,
+              maxLines: 6,
               decoration: const InputDecoration(
                 labelText: 'Bio',
-                border: OutlineInputBorder(),
+                border: InputBorder.none,
               ),
             ),
-            const SizedBox(height: 12),
+            const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+            const SizedBox(height: 16),
 
+            // Arena
             TextField(
               controller: _mtgArenaUsername,
               decoration: const InputDecoration(
                 labelText: 'MTG Arena username',
-                hintText: 'optional',
-                border: OutlineInputBorder(),
+                border: InputBorder.none,
               ),
             ),
+            const Divider(height: 1, thickness: 0.5, color: Colors.black12),
 
             if (_error != null) ...[
               const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
-              ),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
             ],
           ],
         ),

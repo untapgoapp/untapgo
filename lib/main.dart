@@ -1,23 +1,26 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'screens/auth_gate.dart';
 import 'services/settings_store.dart';
-import 'dart:io';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 👇 Fuerza IPv4 en Android
-  if (Platform.isAndroid) {
-    HttpOverrides.global = MyHttpOverrides();
-  }
 
+  // 🔥 Firebase (para push)
+  await Firebase.initializeApp();
+  print('Firebase OK');
+
+  // 🔐 Supabase
   await Supabase.initialize(
     url: 'https://lofprlmlpdtulapypqcy.supabase.co',
     anonKey: 'sb_publishable_WegSnaWTAvcN9suXGUU9TA_Yy4O0CnN',
   );
 
-  // Init app settings (km / mi, etc)
+  // ⚙️ Settings (km / mi, etc)
   await SettingsStore.init();
 
   runApp(const UntapGoApp());
@@ -32,18 +35,24 @@ class UntapGoApp extends StatelessWidget {
       title: 'UntapGo',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+
+        // 🎨 Fondo global
+        scaffoldBackgroundColor: const Color(0xFFFBF7F1),
+
+        // 👇 FIX dropdowns / menus
+        canvasColor: const Color(0xFFFBF7F1),
+
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6E5AA7),
+          background: const Color(0xFFFBF7F1),
+          surface: Colors.white,
+        ),
+
+        // Limpia líneas Material innecesarias
+        dividerColor: Colors.transparent,
       ),
       home: const AuthGate(),
     );
-  }
-}
-
-class MyHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..connectionTimeout = const Duration(seconds: 15);
   }
 }

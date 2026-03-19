@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 
 import '../services/event_service.dart';
 import '../models/event.dart';
@@ -19,6 +21,8 @@ const List<String> kProxiesPolicies = [
   'No',
   'Ask',
 ];
+
+const kBgColor = Color(0xFFFBF7F1);
 
 /// ✅ Formats are now SLUGS (DB-friendly).
 /// UI label comes from the map below.
@@ -88,6 +92,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final _maxPlayersCtrl = TextEditingController(text: '4');
   final _placeCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
+  final _durationFocus = FocusNode();
 
   // Form state
   DateTime _startsAt = DateTime.now().add(const Duration(hours: 2));
@@ -111,6 +116,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String? _sessionToken;
   bool _isSearching = false;
 
+
   // Saving state
   bool _isSaving = false;
   String? _error;
@@ -120,13 +126,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   void initState() {
     super.initState();
-    _placeCtrl.addListener(_onPlaceChanged);
   }
 
   @override
   void dispose() {
+    _durationFocus.dispose();
     _debounce?.cancel();
-    _placeCtrl.removeListener(_onPlaceChanged);
 
     _titleCtrl.dispose();
     _durationCtrl.dispose();
@@ -141,25 +146,71 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   // --------------------------
 
   Future<void> _pickDateTime() async {
-    final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _startsAt.isAfter(now) ? _startsAt : now,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
-    );
-    if (!mounted || date == null) return;
+    DateTime temp = _startsAt;
 
-    final time = await showTimePicker(
+    await showCupertinoModalPopup(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(_startsAt),
-    );
-    if (!mounted || time == null) return;
+      barrierColor: Colors.black.withOpacity(0.2), // ya metemos blur vibes light
+      builder: (_) {
+        DateTime temp = _startsAt;
 
-    setState(() {
-      _startsAt =
-          DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    });
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            height: 320,
+            margin: const EdgeInsets.only(bottom: 24), // 👈 esto lo sube
+            decoration: BoxDecoration(
+              color: kBgColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              children: [
+                // HEADER estilo iOS
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () {
+                          setState(() => _startsAt = temp);
+                          Navigator.pop(context);
+
+                          Future.delayed(const Duration(milliseconds: 100), () {
+                            _durationFocus.requestFocus(); // 👈 mueve el foco
+                          });
+                        },
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6E5AA7),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.dateAndTime,
+                    initialDateTime: _startsAt,
+                    minimumDate: DateTime.now(),
+                    use24hFormat: true,
+                    onDateTimeChanged: (value) {
+                      temp = value;
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // --------------------------
@@ -177,24 +228,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _lng = null;
   }
 
-  void _onPlaceChanged() {
-    _resetPlaceSelection();
-
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () async {
-      final q = _placeCtrl.text.trim();
-      if (!mounted) return;
-
-      if (q.isEmpty) {
-        setState(() => _suggestions.clear());
-        return;
-      }
-
-      _ensureSessionToken();
-      await _fetchSuggestions(q);
-    });
-  }
-
   Future<void> _fetchSuggestions(String query) async {
     final uri =
         Uri.parse('https://places.googleapis.com/v1/places:autocomplete');
@@ -207,7 +240,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final body = {
       "input": query,
       "sessionToken": _sessionToken,
-      "includedRegionCodes": ["US", "CA"],
     };
 
     try {
@@ -307,6 +339,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       final details = await _fetchPlaceDetails(s.placeId);
 
       if (!mounted) return;
+
       setState(() {
         _placeId = details.placeId;
         _addressText = details.formattedAddress.isNotEmpty
@@ -315,14 +348,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         _lat = details.lat;
         _lng = details.lng;
 
-        _placeCtrl.text = _addressText ?? s.text;
+        _placeCtrl.text = _addressText!;
         _suggestions.clear();
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
@@ -330,15 +361,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   Widget _buildSuggestions() {
     final q = _placeCtrl.text.trim();
+    if (_placeId != null) return const SizedBox.shrink();
     if (q.isEmpty) return const SizedBox.shrink();
     if (_suggestions.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(12),
-      ),
       child: ListView.separated(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -442,173 +470,242 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Create event')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ListView(
-          children: [
-            TextField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _placeCtrl,
-              decoration: InputDecoration(
-                labelText: 'Place',
-                border: const OutlineInputBorder(),
-                hintText: 'Start typing…',
-                suffixIcon: _isSearching
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : (_placeCtrl.text.isNotEmpty
-                        ? IconButton(
-                            onPressed: () {
-                              setState(() {
-                                _placeCtrl.clear();
-                                _suggestions.clear();
-                                _resetPlaceSelection();
-                              });
-                            },
-                            icon: const Icon(Icons.close),
-                          )
-                        : null),
-              ),
-            ),
-            _buildSuggestions(),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Starts: ${Event.formatStarts(_startsAt)}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                TextButton(
-                  onPressed: _pickDateTime,
-                  child: const Text('Change'),
-                ),
-              ],
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Auto-join as player'),
-              value: _autoJoin,
-              onChanged: (v) => setState(() => _autoJoin = v),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _durationCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Duration (min)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _maxPlayersCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Max players',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+      backgroundColor: const Color(0xFFFBF7F1),
+      appBar: AppBar(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: const Color(0xFFFBF7F1),
+        foregroundColor: Colors.black,
+      ),
 
-            // ✅ Format (slug stored, label displayed)
-            DropdownButtonFormField<String>(
-              initialValue: _formatSlug,
-              decoration: const InputDecoration(
-                labelText: 'Format',
-                border: OutlineInputBorder(),
-              ),
-              items: kFormatSlugs
-                  .map(
-                    (slug) => DropdownMenuItem(
-                      value: slug,
-                      child: Text(kFormatLabels[slug] ?? slug),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) =>
-                  setState(() => _formatSlug = v ?? kFormatSlugs.first),
-            ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: ListView(
+            physics: const ClampingScrollPhysics(),
+            children: [
 
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _powerLevel,
-              decoration: const InputDecoration(
-                labelText: 'Power level',
-                border: OutlineInputBorder(),
+              // TITLE
+              TextField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Title',
+                  border: InputBorder.none,
+                ),
               ),
-              items: kPowerLevels
-                  .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                  .toList(),
-              onChanged: (v) =>
-                  setState(() => _powerLevel = v ?? kPowerLevels.first),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _proxiesPolicy,
-              decoration: const InputDecoration(
-                labelText: 'Proxies',
-                border: OutlineInputBorder(),
-              ),
-              items: kProxiesPolicies
-                  .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                  .toList(),
-              onChanged: (v) =>
-                  setState(() => _proxiesPolicy = v ?? kProxiesPolicies.last),
-            ),
-
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notesCtrl,
-              minLines: 3,
-              maxLines: 8,
-              decoration: const InputDecoration(
-                labelText: 'Host notes (optional)',
-                border: OutlineInputBorder(),
-                hintText: 'Anything players should know (parking, rules, etc.)',
-              ),
-            ),
-
-            if (_error != null) ...[
+              const Divider(height: 1, thickness: 0.5, color: Colors.black12),
               const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+
+              // PLACE
+              TextField(
+                controller: _placeCtrl,
+                onChanged: (value) {
+                  final q = value.trim();
+
+                  if (_addressText != null && q != _addressText) {
+                    _resetPlaceSelection();
+                  }
+
+                  _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 350), () async {
+                    if (!mounted) return;
+
+                    if (q.isEmpty) {
+                      setState(() => _suggestions.clear());
+                      return;
+                    }
+
+                    _ensureSessionToken();
+                    await _fetchSuggestions(q);
+                  });
+                },
+                decoration: InputDecoration(
+                  labelText: 'Place',
+                  border: InputBorder.none,
+                  hintText: 'Start typing…',
+                  suffixIcon: _isSearching
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : (_placeCtrl.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () {
+                                setState(() {
+                                  _placeCtrl.clear();
+                                  _suggestions.clear();
+                                  _resetPlaceSelection();
+                                });
+                              },
+                            )
+                          : null),
+                ),
+              ),
+              _buildSuggestions(),
+              const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+              const SizedBox(height: 12),
+
+              // DATE
+              GestureDetector(
+                onTap: _pickDateTime,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.access_time),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Today · ${TimeOfDay.fromDateTime(_startsAt).format(context)}',
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+              const SizedBox(height: 12),
+
+              // SWITCH
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Auto-join as player'),
+                  Transform.scale(
+                    scale: 0.9,
+                    child: Switch(
+                      value: _autoJoin,
+                      onChanged: (v) => setState(() => _autoJoin = v),
+                      activeColor: const Color(0xFF6E5AA7),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // DURATION / PLAYERS
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _durationCtrl,
+                      focusNode: _durationFocus,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Duration (min)',
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _maxPlayersCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Max players',
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+              const SizedBox(height: 12),
+
+              // FORMAT
+              DropdownButtonFormField<String>(
+                initialValue: _formatSlug,
+                decoration: const InputDecoration(
+                  labelText: 'Format',
+                  border: InputBorder.none,
+                ),
+                items: kFormatSlugs
+                    .map((slug) => DropdownMenuItem(
+                          value: slug,
+                          child: Text(kFormatLabels[slug] ?? slug),
+                        ))
+                    .toList(),
+                onChanged: (v) =>
+                    setState(() => _formatSlug = v ?? kFormatSlugs.first),
+              ),
+              const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+              const SizedBox(height: 12),
+
+              // POWER
+              DropdownButtonFormField<String>(
+                initialValue: _powerLevel,
+                decoration: const InputDecoration(
+                  labelText: 'Power level',
+                  border: InputBorder.none,
+                ),
+                items: kPowerLevels
+                    .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                    .toList(),
+                onChanged: (v) =>
+                    setState(() => _powerLevel = v ?? kPowerLevels.first),
+              ),
+              const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+              const SizedBox(height: 12),
+
+              // PROXIES
+              DropdownButtonFormField<String>(
+                initialValue: _proxiesPolicy,
+                decoration: const InputDecoration(
+                  labelText: 'Proxies',
+                  border: InputBorder.none,
+                ),
+                items: kProxiesPolicies
+                    .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                    .toList(),
+                onChanged: (v) =>
+                    setState(() => _proxiesPolicy = v ?? kProxiesPolicies.last),
+              ),
+              const Divider(height: 1, thickness: 0.5, color: Colors.black12),
+              const SizedBox(height: 12),
+
+              // NOTES
+              TextField(
+                controller: _notesCtrl,
+                minLines: 3,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                  labelText: 'Host notes (optional)',
+                  border: InputBorder.none,
+                ),
+              ),
+
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: Colors.red)),
+              ],
+
+              const SizedBox(height: 100), // 👈 un poco más aire real
             ],
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _isSaving ? null : _create,
-              child: _isSaving
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Create event'),
-            ),
-          ],
+          ),
+        ),
+      ),
+
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+        child: SizedBox(
+          height: 52,
+          child: FilledButton(
+            onPressed: _isSaving ? null : _create,
+            child: _isSaving
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Create event'),
+          ),
         ),
       ),
     );

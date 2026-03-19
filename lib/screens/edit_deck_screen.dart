@@ -74,14 +74,10 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
   void initState() {
     super.initState();
 
-    _commander =
-        TextEditingController(text: widget.initialCommanderName);
-    _deckUrl =
-        TextEditingController(text: widget.initialDeckUrl ?? '');
-    _exportText =
-        TextEditingController(text: widget.initialExportText ?? '');
-    _coverArt =
-        TextEditingController(text: widget.initialImageUrl ?? '');
+    _commander = TextEditingController(text: widget.initialCommanderName);
+    _deckUrl = TextEditingController(text: widget.initialDeckUrl ?? '');
+    _exportText = TextEditingController(text: widget.initialExportText ?? '');
+    _coverArt = TextEditingController(text: widget.initialImageUrl ?? '');
 
     _w = widget.initialW;
     _u = widget.initialU;
@@ -131,8 +127,7 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
   }
 
   Map<String, String> _headers() {
-    final token =
-        Supabase.instance.client.auth.currentSession?.accessToken;
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
     return {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
@@ -158,20 +153,15 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
 
     final body = {
       'commander_name': commanderName,
-      'deck_url': _deckUrl.text.trim().isEmpty
-          ? null
-          : _deckUrl.text.trim(),
-      'image_url': _coverArt.text.trim().isEmpty
-          ? null
-          : _coverArt.text.trim(),
+      'deck_url': _deckUrl.text.trim().isEmpty ? null : _deckUrl.text.trim(),
+      'image_url': _coverArt.text.trim().isEmpty ? null : _coverArt.text.trim(),
       'color_white': _w,
       'color_blue': _u,
       'color_black': _b,
       'color_red': _r,
       'color_green': _g,
       'color_colorless': colorlessFinal,
-      'format_slug':
-          _formatSlug.isEmpty ? null : _formatSlug,
+      'format_slug': _formatSlug.isEmpty ? null : _formatSlug,
       'export_text': _exportText.text.trim().isEmpty
           ? null
           : _exportText.text.trim(),
@@ -183,13 +173,9 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
           ? Uri.parse('$base/me/decks/${widget.deckId}')
           : Uri.parse('$base/me/decks');
 
-      print('PATCH BODY: ${jsonEncode(body)}');
-      
       final res = widget.isEdit
-          ? await http.patch(uri,
-              headers: _headers(), body: jsonEncode(body))
-          : await http.post(uri,
-              headers: _headers(), body: jsonEncode(body));
+          ? await http.patch(uri, headers: _headers(), body: jsonEncode(body))
+          : await http.post(uri, headers: _headers(), body: jsonEncode(body));
 
       if (res.statusCode != 200 && res.statusCode != 201) {
         throw Exception('${res.statusCode} ${res.body}');
@@ -211,6 +197,55 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
     }
   }
 
+  Widget _inputField(TextEditingController controller, String hint,
+      {int minLines = 1, int maxLines = 1}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: controller,
+        minLines: minLines,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          hintText: hint,
+          border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _colorToggle(String label, bool value, ValueChanged<bool> onChanged) {
+    return GestureDetector(
+      onTap: _saving ? null : () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: value
+              ? const Color(0xFF6E5AA7).withOpacity(0.12)
+              : Colors.transparent,
+          border: Border.all(
+            color: value
+                ? const Color(0xFF6E5AA7)
+                : Colors.grey.shade300,
+            width: value ? 2 : 1,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: SvgPicture.asset(
+          'assets/mana/${label.toLowerCase()}.svg',
+          width: 22,
+          height: 22,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = widget.isEdit ? 'Edit deck' : 'Add deck';
@@ -222,33 +257,41 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
     final previewImage = _coverArt.text.trim();
 
     return Scaffold(
+      backgroundColor: const Color(0xFFFBF7F1),
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         title: Text(title),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save'),
+            child: Text(
+              _saving ? 'Saving…' : 'Save',
+              style: const TextStyle(
+                color: Color(0xFF6E5AA7),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Preview
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: Colors.grey.shade50,
+              color: Colors.white.withOpacity(0.6),
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: Container(
+                  child: SizedBox(
                     width: 90,
                     height: 70,
-                    color: Colors.grey.shade200,
                     child: Image.network(
                       previewImage.startsWith('http')
                           ? previewImage
@@ -260,20 +303,16 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         previewName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      if (_formatSlug.isNotEmpty) ...[
-                        const SizedBox(height: 4),
+                      if (_formatSlug.isNotEmpty)
                         Text(
                           _formatLabel(_formatSlug),
                           style: TextStyle(
@@ -281,7 +320,6 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
                             color: Colors.grey.shade600,
                           ),
                         ),
-                      ],
                       const SizedBox(height: 6),
                       _deckColorsPreview(),
                     ],
@@ -293,70 +331,50 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
 
           const SizedBox(height: 20),
 
-          TextField(
-            controller: _commander,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              border: OutlineInputBorder(),
+          _inputField(_commander, 'Name'),
+          const SizedBox(height: 12),
+
+          _inputField(_coverArt, 'Cover art URL'),
+          const SizedBox(height: 12),
+
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _formatSlug,
+                isExpanded: true,
+                hint: const Text('Format'),
+                items: _formatOptions
+                    .map((o) => DropdownMenuItem(
+                          value: o['slug'],
+                          child: Text(o['label']!),
+                        ))
+                    .toList(),
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() => _formatSlug = v ?? ''),
+              ),
             ),
           ),
 
           const SizedBox(height: 12),
 
-          TextField(
-            controller: _coverArt,
-            decoration: const InputDecoration(
-              labelText: 'Cover Art URL',
-              border: OutlineInputBorder(),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          DropdownButtonFormField<String>(
-            initialValue: _formatSlug,
-            items: _formatOptions
-                .map(
-                  (o) => DropdownMenuItem(
-                    value: o['slug'],
-                    child: Text(o['label']!),
-                  ),
-                )
-                .toList(),
-            onChanged: _saving
-                ? null
-                : (v) => setState(() => _formatSlug = v ?? ''),
-            decoration: const InputDecoration(
-              labelText: 'Format',
-              border: OutlineInputBorder(),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          TextField(
-            controller: _deckUrl,
-            decoration: const InputDecoration(
-              labelText: 'Deck URL (optional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-
+          _inputField(_deckUrl, 'Deck URL (optional)'),
           const SizedBox(height: 20),
 
-          Text(
+          const Text(
             'Colors',
-            style: Theme.of(context)
-                .textTheme
-                .titleSmall
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: TextStyle(fontWeight: FontWeight.w600),
           ),
 
           const SizedBox(height: 10),
 
           Wrap(
             spacing: 12,
-            runSpacing: 12,
             children: [
               _colorToggle('W', _w, (v) => setState(() => _w = v)),
               _colorToggle('U', _u, (v) => setState(() => _u = v)),
@@ -369,48 +387,11 @@ class _EditDeckScreenState extends State<EditDeckScreen> {
 
           const SizedBox(height: 20),
 
-          TextField(
-            controller: _exportText,
-            minLines: 8,
-            maxLines: 20,
-            decoration: const InputDecoration(
-              labelText: 'Plain text (paste here)',
-              border: OutlineInputBorder(),
-            ),
-          ),
+          _inputField(_exportText, 'Paste your deck list here',
+              minLines: 8, maxLines: 20),
 
           const SizedBox(height: 28),
         ],
-      ),
-    );
-  }
-
-  Widget _colorToggle(
-      String label, bool value, ValueChanged<bool> onChanged) {
-    return GestureDetector(
-      onTap: _saving ? null : () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: value
-              ? Colors.black.withOpacity(0.05)
-              : Colors.transparent,
-          border: Border.all(
-            color: value
-                ? Colors.black
-                : Colors.grey.shade400,
-            width: 1, // thinner border
-          ),
-        ),
-        alignment: Alignment.center,
-        child: SvgPicture.asset(
-          'assets/mana/${label.toLowerCase()}.svg',
-          width: 22,
-          height: 22,
-        ),
       ),
     );
   }

@@ -10,6 +10,10 @@ class PublicProfile {
   // MTG Arena username (optional)
   final String? mtgArenaUsername;
 
+  // NEW: stats
+  final int? hostedCount;
+  final int? playedCount;
+
   final List<Deck> decks;
   final List<Badge> badges;
 
@@ -19,6 +23,8 @@ class PublicProfile {
     this.avatarUrl,
     this.bio,
     this.mtgArenaUsername,
+    this.hostedCount,
+    this.playedCount,
     required this.decks,
     required this.badges,
   });
@@ -30,6 +36,11 @@ class PublicProfile {
       return (t == null || t.isEmpty) ? null : t;
     }
 
+    int? ii(dynamic v) {
+      if (v == null) return null;
+      return int.tryParse(v.toString());
+    }
+
     final rawDecks = json['decks'] as List<dynamic>? ?? [];
     final rawBadges = json['badges'] as List<dynamic>? ?? [];
 
@@ -39,6 +50,8 @@ class PublicProfile {
       avatarUrl: ss(json['avatar_url']),
       bio: ss(json['bio']),
       mtgArenaUsername: ss(json['mtg_arena_username']),
+      hostedCount: ii(json['hosted_count']),
+      playedCount: ii(json['played_count']),
       decks: rawDecks
           .map((d) => Deck.fromJson(d as Map<String, dynamic>))
           .toList(),

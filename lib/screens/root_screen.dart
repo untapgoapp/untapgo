@@ -126,19 +126,23 @@ class _RootScreenState extends State<RootScreen> {
   // ─────────────────────────────────────────────
 
   Future<void> _loadInitialNotifications(String userId) async {
-    final data = await supabase
-        .from('notifications')
-        .select()
-        .eq('user_id', userId)
-        .eq('is_read', false)
-        .order('created_at', ascending: false);
+    try {
+      final data = await supabase
+          .from('notifications')
+          .select()
+          .eq('user_id', userId)
+          .eq('is_read', false)
+          .order('created_at', ascending: false);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      _notifications = List<Map<String, dynamic>>.from(data);
-      _unreadCount = _notifications.length;
-    });
+      setState(() {
+        _notifications = List<Map<String, dynamic>>.from(data);
+        _unreadCount = _notifications.length;
+      });
+    } catch (e) {
+      print('LOAD NOTIFICATIONS ERROR: $e');
+    }
   }
 
   void _listenNotifications(String userId) {
@@ -229,8 +233,12 @@ class _RootScreenState extends State<RootScreen> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: const Color(0xFFFBF7F1),
         drawer: _buildDrawer(context),
         appBar: AppBar(
+          backgroundColor: const Color(0xFFFBF7F1),
+          elevation: 0,
+          scrolledUnderElevation: 0,
           leading: Builder(
             builder: (context) => IconButton(
               icon: const Icon(Icons.menu),
@@ -262,7 +270,7 @@ class _RootScreenState extends State<RootScreen> {
 
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFFBF7F1),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,7 +353,10 @@ class _RootScreenState extends State<RootScreen> {
               ),
 
             const SizedBox(height: 24),
-            const Divider(),
+            const Divider(
+              color: Colors.black12,
+              thickness: 0.5,
+            ),
 
             ListTile(
               leading: const Icon(
@@ -425,7 +436,10 @@ class _RootScreenState extends State<RootScreen> {
             ),
 
             const Spacer(),
-            const Divider(),
+            const Divider(
+              color: Colors.black12,
+              thickness: 0.5,
+            ),
 
             ListTile(
               leading: const Icon(Icons.logout, color: AppColors.coolGray),
